@@ -1,0 +1,52 @@
+// use crate::services::jetstream_listener;
+use axum::response::IntoResponse;
+use durable_object::client::MessageBroker;
+use frontend_worker::{router::router, state::AppState};
+use services::oauth::OAuthClient;
+use std::sync::Arc;
+use std::time::Duration;
+use storage::{db::StatusDb, kv::KvStoreWrapper};
+use worker::{event, Context, Env, HttpRequest};
+
+use tower::Service as _;
+
+mod durable_object;
+mod frontend_worker;
+mod services;
+mod storage;
+mod types;
+
+const SESSION_STORE_TTL: Duration = Duration::new(60 * 60 * 24 * 30, 0);
+
+#[event(fetch)]
+async fn fetch(
+    req: HttpRequest,
+    env: Env,
+    _ctx: Context,
+) -> worker::Result<http::Response<axum::body::Body>> {
+    console_error_panic_hook::set_once();
+
+    let kv = Arc::new(env.kv("KV")?);
+    let status_db = StatusDb::from_env(&env)?;
+
+    let url = env.var("HOST")?;
+
+    let client = match OAuthClient::new(url.to_string(), &kv) {
+        Ok(c) => c,
+        // TODO: move to domain error probably, fixme and etc
+        Err(e) => return Ok(format!("oauth client init err: {}", e).into_response()),
+    };
+
+    let ns = env.durable_object("MSGBROKER")?;
+    let durable_object = MessageBroker::from_namespace(&ns)?;
+
+    let session_store = KvStoreWrapper::new(kv, "tower:session", SESSION_STORE_TTL);
+
+    let state = AppState {
+        oauth: client,
+        status_db,
+        durable_object,
+    };
+
+    Ok(router(state, session_store).call(req).await?)
+}
