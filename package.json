@@ -1,0 +1,6 @@
+{
+    "scripts": {
+      "deploy": "npm run db:migrations:apply && wrangler deploy",
+      "db:migrations:apply": "wrangler d1 migrations apply DB --remote"
+    }
+  }

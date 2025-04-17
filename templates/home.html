@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="root">
+    <div class="error"></div>
+    <div id="header">
+        <h1>Rusty Statusphere</h1>
+        <p>Set your status on the Atmosphere.</p>
+    </div>
+    <div class="container">
+        <div class="card">
+            {% if let Some(Profile {did, display_name}) = profile %}
+            <form action="/logout" method="get" class="session-form">
+                <div>
+                    Hi,
+                    {% if let Some(display_name) = display_name %}
+                    <strong>{{display_name}}</strong>
+                    {% else %}
+                    <strong>friend</strong>
+                    {% endif %}. What's
+                    your status today??
+                </div>
+                <div>
+                    <button type="submit">Log out</button>
+                </div>
+            </form>
+            {% else %}
+            <div class="session-form">
+                <div>Log in to set your status!</div>
+                <form action="/login" method="post" class="login-form">
+                    <button type="submit">Log in</button>
+                </form>
+            </div>
+            {% endif %}
+
+
+        </div>
+        <form id= "status-form" class="status-options">
+            {% for status in status_options %}
+            <!-- TODO: update the selected element here on form submit -->
+            <button
+                    class="{% if let Some(my_status) = my_status %} {%if my_status == status %} status-option selected {% else %} status-option {% endif %} {% else %} status-option  {%endif%} "
+                    name="status" value="{{status}}">
+                {{status}}
+            </button>
+
+            {% endfor %}
+        </form>
+        <div id="statuscontainer"> </div>
+    </div>
+</div>
+{%endblock content%}
+
+{%block js%}
+<!-- Client-side JavaScript code for the app. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="text/javascript">
+let currentWebSocket = null;
+let hasRecievedStatuses = false;
+
+let hostname = window.location.host;
+
+$('#status-form').on('submit',function(e){
+    e.preventDefault();
+    let data =  e.originalEvent.submitter;
+    console.log("event data");
+    console.log(data);
+
+    let toSend = { "status": data.innerText };
+
+    $.ajax({
+        type     : "POST",
+        cache    : false,
+        url      : "/status",
+        data     : JSON.stringify(toSend),
+        contentType: "application/json; charset=utf-8",
+        dataType : "json",
+        success  : function(data) {
+            console.log("onsubmit success", data)
+        }
+    });
+
+});
+
+function join() {
+  // If we are running via wrangler dev, use ws:
+  const wss = document.location.protocol === "http:" ? "ws://" : "wss://";
+  let ws = new WebSocket(wss + hostname + "/websocket");
+  let rejoined = false;
+  let startTime = Date.now();
+
+  let rejoin = async () => {
+    if (!rejoined) {
+      rejoined = true;
+      currentWebSocket = null;
+
+      // Don't try to reconnect too rapidly.
+      let timeSinceLastJoin = Date.now() - startTime;
+      if (timeSinceLastJoin < 10000) {
+        // Less than 10 seconds elapsed since last join. Pause a bit.
+        await new Promise(resolve => setTimeout(resolve, 10000 - timeSinceLastJoin));
+      }
+
+      // OK, reconnect now!
+      join();
+    }
+  }
+
+  ws.addEventListener("open", event => {
+    currentWebSocket = ws;
+    // tells the server to send us the last n status events
+    // if we haven't received any yet, eg if this is the first
+    // websocket conn or the last one died before getting a chance to do so
+    if (!hasRecievedStatuses) {
+      ws.send("ready");
+    }
+
+  });
+
+  ws.addEventListener("message", event => {
+    let data = JSON.parse(event.data);
+
+    if (data.error) {
+      console.log("error from backend", data)
+    } else {
+      console.log("status from backend", data)
+
+
+      let id = data.uri.replaceAll("/", "_").replaceAll(":", "_").replaceAll(".", "_");
+      console.log("normalized id ::   " + id);
+
+      let statusWrapper = null;
+      let preexisting = $("#" + id);
+
+      let updating_existing = false;
+
+      if (preexisting.length == 0) {
+
+
+        statusWrapper = preexisting;
+        statusWrapper = $('<div>', {
+          class: "status-line",
+          id: id 
+        });
+      } else {
+
+        preexisting.empty();
+
+        statusWrapper = preexisting;
+
+        updating_existing = true;
+
+      }
+
+
+      let status = $('<div>', {
+        class: "status",
+        text: data.status
+      });
+
+      let desc = $('<div>', {
+        class: "desc",
+      });
+      let author = $('<a>', {
+        class: "author",
+        href: "https://bsky.app/profile/" + data.author_did,
+        text: data.handle ? data.handle : data.author_did
+      });
+      desc.append(author);
+      desc.append(document.createTextNode(" is feeling " + data.status + ", sourced via " + data.source));
+
+
+      statusWrapper.append(status);
+      statusWrapper.append(desc);
+
+      if (!updating_existing) {
+        $("#statuscontainer").prepend(statusWrapper);
+      }
+
+    }
+  });
+
+  ws.addEventListener("close", event => {
+    console.log("WebSocket closed, reconnecting:", event.code, event.reason);
+    rejoin();
+  });
+  ws.addEventListener("error", event => {
+    console.log("WebSocket error, reconnecting:", event);
+    rejoin();
+  });
+}
+
+
+join();
+</script>
+{%endblock js%}
