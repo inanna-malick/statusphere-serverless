@@ -3,7 +3,9 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2025-04-08"
 
 [build]
-command = "cargo install -q worker-build && worker-build --release"
+# needed to make "Deploy with Cloudflare" button work, installs rust via rustup
+# if we're in CI and don't have Cargo
+command = "./custom_build.sh"
 
 # database for status records
 [[d1_databases]]
@@ -25,7 +27,7 @@ invocation_logs = false
 
 [vars]
 # for use in oauth redirect links & etc
-HOST = "https://statusphere-w.inanna-c38.workers.dev"
+HOST = "https://statusphere.inanna-c38.workers.dev"
 
 # serves css without having to spin up a worker
 [assets]
