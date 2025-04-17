@@ -1,5 +1,7 @@
 # Statusphere Rust CF
 
+Deployed here: http://statusphere.inanna-c38.workers.dev/
+
 
 Statusphere is a very simple app that does one thing: publish emojis as a snapshot of how a user's feeling.
 
