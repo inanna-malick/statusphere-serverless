@@ -99,8 +99,10 @@ Waking up every minute and reading the last minute's events is ok for a prototyp
 ## References
 
 This post builds on
-- statusphere by bsky team
-- rusty statusphere
+
+- the statusphere guide by the bsky team https://atproto.com/guides/applications
+- rusty statusphere https://github.com/fatfingers23/rusty_statusphere_example_app
+
 Both of these posts are extremely good and I recommend reading them. They provide a much fuller picture of how things work in the ATProto ecosystem.
 
 
