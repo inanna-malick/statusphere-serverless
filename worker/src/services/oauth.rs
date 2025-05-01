@@ -99,7 +99,7 @@ impl OAuthClient {
         let session_store = KvStoreWrapper::new(kv.clone(), "oauth:session", OAUTH_STORE_TTL);
 
         // NOTE: duplicated code here is because TryIntoOAuthClientMetadata is a private trait
-        if url.contains("http://127.0.0.1") {
+       let client =  if url.contains("http://127.0.0.1") {
             let client_metadata = AtprotoLocalhostClientMetadata {
                 scopes: Some(vec![
                     Scope::Known(KnownScope::Atproto),
@@ -117,9 +117,7 @@ impl OAuthClient {
                 session_store,
             };
 
-            Ok(OAuthClient {
-                client: Arc::new(AtriumOAuthClient::new(config)?),
-            })
+            AtriumOAuthClient::new(config)?
         } else {
             let client_metadata = AtprotoClientMetadata {
                 client_id: format!("{url}/client-metadata.json"),
@@ -143,9 +141,10 @@ impl OAuthClient {
                 session_store,
             };
 
-            Ok(OAuthClient {
-                client: Arc::new(AtriumOAuthClient::new(config)?),
-            })
-        }
+            AtriumOAuthClient::new(config)?
+        };
+
+
+        Ok(OAuthClient { client: Arc::new(client) })
     }
 }
