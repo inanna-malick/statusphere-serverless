@@ -1,7 +1,7 @@
 use crate::storage::kv::KvStoreWrapper;
 use crate::types::errors::AppError;
 
-use atrium_api::types::string::Did;
+use atrium_api::types::string::{Did, Handle};
 use atrium_oauth::{
     AtprotoClientMetadata, AtprotoLocalhostClientMetadata, AuthorizeOptions, CallbackParams,
     DefaultHttpClient, GrantType, KnownScope, OAuthClient as AtriumOAuthClient, OAuthClientConfig,
@@ -45,8 +45,6 @@ impl OAuthClient {
     }
 
     pub async fn callback(&self, params: CallbackParams) -> Result<Did, AppError> {
-        console_log!("callback fn");
-
         let (bsky_session, _) = self.client.callback(params).await?;
         let agent = AtriumAgent::new(bsky_session);
 
@@ -58,20 +56,14 @@ impl OAuthClient {
     }
 
     pub fn client_metadata(&self) -> OAuthClientMetadata {
-        console_log!("client metadata");
         self.client.client_metadata.clone()
     }
 
-    pub async fn auth_redirect_url(&self) -> Result<String, AppError> {
-        // TODO: update this, the post works better if it's not limited to bsky as pds
-        const BSKY_PDS: &str = "https://bsky.social";
-
-        console_log!("generate auth redirect url");
-
+    pub async fn auth_redirect_url(&self, handle: Handle) -> Result<String, AppError> {
         let auth_url = self
             .client
             .authorize(
-                BSKY_PDS,
+                handle,
                 AuthorizeOptions {
                     scopes: vec![
                         Scope::Known(KnownScope::Atproto),

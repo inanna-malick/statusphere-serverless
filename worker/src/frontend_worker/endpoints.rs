@@ -4,12 +4,13 @@ use crate::types::status::STATUS_OPTIONS;
 use crate::{types::errors::AppError, types::templates::HomeTemplate};
 use crate::{types::status::Status, types::templates::Profile};
 use anyhow::Context as _;
+use atrium_api::types::string::Handle;
 use atrium_oauth::{CallbackParams, OAuthClientMetadata};
-use axum::Json;
 use axum::{
     extract::{Query, State},
     response::Redirect,
 };
+use axum::{Form, Json};
 use axum_extra::TypedHeader;
 use headers::{Authorization, Upgrade};
 use serde::{Deserialize, Serialize};
@@ -44,10 +45,18 @@ pub async fn logout(session: Session) -> Result<Redirect, AppError> {
     Ok(Redirect::to("/"))
 }
 
+#[derive(Deserialize)]
+pub struct LoginForm {
+    handle: Handle,
+}
+
 /// Establish a session via oauth
 #[worker::send]
-pub async fn login(State(AppState { oauth, .. }): State<AppState>) -> Result<Redirect, AppError> {
-    Ok(Redirect::to(&oauth.auth_redirect_url().await?))
+pub async fn login(
+    State(AppState { oauth, .. }): State<AppState>,
+    Form(LoginForm { handle }): Form<LoginForm>,
+) -> Result<Redirect, AppError> {
+    Ok(Redirect::to(&oauth.auth_redirect_url(handle).await?))
 }
 
 /// Render the home page
