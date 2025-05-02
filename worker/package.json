@@ -1,6 +1,11 @@
 {
-    "scripts": {
-      "deploy": "npm run db:migrations:apply && wrangler deploy",
-      "db:migrations:apply": "wrangler d1 migrations apply DB --remote"
-    }
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --ip=127.0.0.1",
+    "deploy": "npm run db:migrations:apply && wrangler deploy",
+    "db:migrations:apply": "wrangler d1 migrations apply DB --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.14.1"
   }
+}

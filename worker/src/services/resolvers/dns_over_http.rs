@@ -28,7 +28,18 @@ impl DnsTxtResolver for DnsOverHttps {
 
         let resp = resp.json::<PartialResp>().await?;
 
-        Ok(resp.answer.into_iter().map(|x| x.data).collect())
+        Ok(resp
+            .answer
+            .into_iter()
+            .map(|x| {
+                // TXT-records are (*sometimes*) quoted, but downstream
+                // does not handle quotes well
+                if x.data.starts_with('"') && x.data.ends_with('"') {
+                    return x.data[1..x.data.len() - 1].to_string();
+                }
+                x.data
+            })
+            .collect())
     }
 }
 

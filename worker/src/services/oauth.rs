@@ -62,16 +62,19 @@ impl OAuthClient {
         self.client.client_metadata.clone()
     }
 
-    pub async fn auth_redirect_url(&self) -> Result<String, AppError> {
-        // TODO: update this, the post works better if it's not limited to bsky as pds
-        const BSKY_PDS: &str = "https://bsky.social";
-
-        console_log!("generate auth redirect url");
-
+    pub async fn auth_redirect_url(&self, handle: String) -> Result<String, AppError> {
+        let handle = match atrium_api::types::string::Handle::new(handle) {
+            Ok(v) => v,
+            Err(_) => panic!("Foo"),
+        };
+        console_log!(
+            "generate auth redirect url by calling `.authorize` {:?}",
+            handle
+        );
         let auth_url = self
             .client
             .authorize(
-                BSKY_PDS,
+                handle,
                 AuthorizeOptions {
                     scopes: vec![
                         Scope::Known(KnownScope::Atproto),
