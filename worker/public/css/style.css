@@ -125,11 +125,11 @@ button:hover,
     background-color: #fff;
 }
 
-.card> :first-child {
+.card > :first-child {
     margin-top: 0;
 }
 
-.card> :last-child {
+.card > :last-child {
     margin-bottom: 0;
 }
 
@@ -138,6 +138,7 @@ button:hover,
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    width: 100%;
 }
 
 .login-form {
@@ -148,11 +149,13 @@ button:hover,
     border-radius: 6px;
     padding: 10px 16px;
     background-color: #fff;
+    width: 100%;
 }
 
 .login-form input {
     flex: 1;
     border: 0;
+    outline: none;
 }
 
 .status-options {
@@ -200,7 +203,7 @@ button:hover,
 }
 
 .status-line:not(:first-child)::before {
-    content: '';
+    content: "";
     position: absolute;
     width: 2px;
     background-color: var(--border-color);
@@ -240,22 +243,22 @@ button:hover,
 }
 
 .tooltip .tooltiptext {
-  visibility: hidden;
-  width: 240px;
-  background-color: black;
-  color: #fff;
-  text-align: center;
-  border-radius: 6px;
-  padding: 5px 0;
-  
-  /* Position the tooltip */
-  position: absolute;
-  z-index: 1;
-  top: 100%;
-  left: 50%;
-  margin-left: -60px;
+    visibility: hidden;
+    width: 240px;
+    background-color: black;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px 0;
+
+    /* Position the tooltip */
+    position: absolute;
+    z-index: 1;
+    top: 100%;
+    left: 50%;
+    margin-left: -60px;
 }
 
 .tooltip:hover .tooltiptext {
-  visibility: visible;
+    visibility: visible;
 }
