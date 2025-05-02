@@ -4,7 +4,7 @@
 <div id="root">
     <div class="error"></div>
     <div id="header">
-        <h1>Rusty Statusphere</h1>
+        <h1>Statusflare</h1>
         <p>Set your status on the Atmosphere.</p>
     </div>
     <div class="container">
@@ -26,8 +26,14 @@
             </form>
             {% else %}
             <div class="session-form">
-                <div>Log in to set your status!</div>
                 <form action="/login" method="post" class="login-form">
+                    <p>@</p>
+                    <input
+                        type="text"
+                        name="handle"
+                        placeholder="Enter your handle (eg alice.bsky.social)"
+                        required
+                    />
                     <button type="submit">Log in</button>
                 </form>
             </div>
@@ -147,7 +153,7 @@ function join() {
         statusWrapper = preexisting;
         statusWrapper = $('<div>', {
           class: "status-line tooltip",
-          id: id 
+          id: id
         });
       } else {
         preexisting.empty();

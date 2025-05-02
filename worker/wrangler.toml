@@ -6,6 +6,7 @@ compatibility_date = "2025-04-08"
 # needed to make "Deploy with Cloudflare" button work, installs rust via rustup
 # if we're in CI and don't have Cargo
 command = "./custom_build.sh"
+watch_dir = ["src", "public", "templates"]
 
 # database for status records
 [[d1_databases]]
@@ -26,8 +27,6 @@ enabled = true
 invocation_logs = false
 
 [vars]
-# for use in oauth redirect links & etc
-HOST = "https://statusphere.inanna-c38.workers.dev"
 SCHEDULED_ALARM = "true"
 
 # serves css without having to spin up a worker
@@ -37,17 +36,14 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 
-
 # used for live updates via websocket
 [durable_objects]
-bindings = [
-  { name = "MSGBROKER", class_name = "MsgBroker" },
-]
+bindings = [{ name = "MSGBROKER", class_name = "MsgBroker" }]
 
 [[migrations]]
-tag = "v1" # Should be unique for each entry
+tag = "v1"                                              # Should be unique for each entry
 new_sqlite_classes = ["MsgBroker", "JetstreamListener"]
 
 [[migrations]]
-tag = "v2" # Should be unique for each entry
+tag = "v2"                              # Should be unique for each entry
 deleted_classes = ["JetstreamListener"]

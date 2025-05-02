@@ -29,9 +29,19 @@ async fn fetch(
     let kv = Arc::new(env.kv("KV")?);
     let status_db = StatusDb::from_env(&env)?;
 
-    let url = env.var("HOST")?;
+    let url = {
+        let scheme = match req.uri().scheme() {
+            Some(v) => v,
+            None => panic!("URI missing scheme"),
+        };
+        let host = match req.uri().host() {
+            Some(v) => v,
+            None => panic!("URI missing host"),
+        };
+        format!("{}://{}", scheme, host)
+    };
 
-    let client = match OAuthClient::new(url.to_string(), &kv) {
+    let client = match OAuthClient::new(url, &kv) {
         Ok(c) => c,
         // TODO: move to domain error probably, fixme and etc
         Err(e) => return Ok(format!("oauth client init err: {}", e).into_response()),
