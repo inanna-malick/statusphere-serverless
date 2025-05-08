@@ -2,8 +2,6 @@ use atrium_identity::handle::DnsTxtResolver;
 use reqwest_wasm::header::ACCEPT;
 use serde::{Deserialize, Serialize};
 
-// TODO: move into submodule of resolvers
-
 pub struct DnsOverHttps(reqwest_wasm::Client);
 
 impl DnsOverHttps {
@@ -28,7 +26,15 @@ impl DnsTxtResolver for DnsOverHttps {
 
         let resp = resp.json::<PartialResp>().await?;
 
-        Ok(resp.answer.into_iter().map(|x| x.data).collect())
+        Ok(resp
+            .answer
+            .into_iter()
+            .map(|x| {
+                // TXT-records are (*sometimes*) quoted, but downstream
+                // does not handle quotes well
+                x.data.trim_matches('"').to_string()
+            })
+            .collect())
     }
 }
 
