@@ -8,7 +8,6 @@ use atrium_oauth::{
     OAuthClientMetadata, OAuthResolverConfig, Scope,
 };
 use std::{sync::Arc, time::Duration};
-use worker::console_log;
 
 use super::agent::Agent;
 use super::resolvers;

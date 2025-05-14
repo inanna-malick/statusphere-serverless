@@ -28,6 +28,7 @@ use futures::StreamExt as _;
 
 // read from jetstream once per minute
 const ALARM_INTERVAL_MS: i64 = 60 * 1000;
+const MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS: usize = 15;
 
 #[durable_object]
 pub struct MsgBroker {
@@ -35,6 +36,7 @@ pub struct MsgBroker {
     env: Env,
     status_db: StatusDb,
     did_resolver: resolvers::DidResolver,
+    alarms_without_active_websockets: usize,
 }
 
 #[durable_object]
@@ -50,6 +52,7 @@ impl DurableObject for MsgBroker {
             state,
             status_db,
             did_resolver,
+            alarms_without_active_websockets: 0,
         }
     }
 
@@ -149,6 +152,33 @@ impl DurableObject for MsgBroker {
             None => {
                 console_log!("no events observed (including account/identity events). weird, but not necessarily an error")
             }
+        }
+
+        if self.state.get_websockets().is_empty() {
+            self.alarms_without_active_websockets += 1;
+            console_log!(
+                "triggered alarm with no active websockets, incrementing counter: {}",
+                self.alarms_without_active_websockets
+            );
+        } else {
+            console_log!(
+                "triggered alarm with {} active websockets, resetting counter to 0 from {}",
+                self.state.get_websockets().len(),
+                self.alarms_without_active_websockets
+            );
+            self.alarms_without_active_websockets = 0;
+        }
+
+        // TTL: stop alarm if no active websockets for greater than N alarm cycles,
+        //      this worker is no longer active and can be killed to save resources
+        if self.alarms_without_active_websockets > MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS {
+            console_log!(
+                "reached max alarms without active websockets ({}), terminating alarm",
+                MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS
+            );
+            self.state.storage().delete_alarm().await?;
+            self.state.storage().delete_all().await?;
+            return worker::Response::empty();
         }
 
         if self.listener_mode() == ListenerMode::Scheduled {
