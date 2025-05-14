@@ -6,7 +6,7 @@ use services::oauth::OAuthClient;
 use std::sync::Arc;
 use std::time::Duration;
 use storage::{db::StatusDb, kv::KvStoreWrapper};
-use worker::{event, Context, Env, HttpRequest};
+use worker::{console_debug, event, Context, Env, HttpRequest};
 
 use tower::Service as _;
 
@@ -29,7 +29,19 @@ async fn fetch(
     let kv = Arc::new(env.kv("KV")?);
     let status_db = StatusDb::from_env(&env)?;
 
-    let url = env.var("HOST")?;
+    let url = {
+        let scheme = match req.uri().scheme() {
+            Some(v) => v,
+            None => return Ok("request URI missing scheme".into_response()),
+        };
+        let host = match req.uri().host() {
+            Some(v) => v,
+            None => return Ok("request URI missing host".into_response()),
+        };
+        format!("{}://{}", scheme, host)
+    };
+
+    console_debug!("running with URL: {}", url);
 
     let client = match OAuthClient::new(url.to_string(), &kv) {
         Ok(c) => c,

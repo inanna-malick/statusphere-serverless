@@ -27,7 +27,6 @@ enabled = true
 invocation_logs = false
 
 [vars]
-HOST = "https://statusphere.inanna-c38.workers.dev"
 SCHEDULED_ALARM = "true"
 
 # serves css without having to spin up a worker
