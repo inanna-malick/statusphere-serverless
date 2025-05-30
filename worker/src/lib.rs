@@ -1,6 +1,9 @@
 // use crate::services::jetstream_listener;
 use axum::response::IntoResponse;
-use durable_object::client::MessageBroker;
+use durable_object::{
+    jetstream_listener::{self, client::JetstreamListener},
+    websocket_broker::{self, client::WebsocketBroker},
+};
 use frontend_worker::{router::router, state::AppState};
 use services::oauth::OAuthClient;
 use std::sync::Arc;
@@ -49,15 +52,16 @@ async fn fetch(
         Err(e) => return Ok(format!("oauth client init err: {}", e).into_response()),
     };
 
-    let ns = env.durable_object("MSGBROKER")?;
-    let durable_object = MessageBroker::from_namespace(&ns)?;
+    let jetstream_listener = JetstreamListener::from_env(&env)?;
+    let websocket_broker = WebsocketBroker::from_env(&env, req.headers())?;
 
     let session_store = KvStoreWrapper::new(kv, "tower:session", SESSION_STORE_TTL);
 
     let state = AppState {
         oauth: client,
         status_db,
-        durable_object,
+        websocket_broker,
+        jetstream_listener,
     };
 
     Ok(router(state, session_store).call(req).await?)

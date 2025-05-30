@@ -5,20 +5,32 @@ use crate::types::jetstream;
 use crate::types::lexicons::xyz;
 use crate::types::status::StatusFromDb;
 use anyhow::{anyhow, Context as _};
-use http::Request;
+use headers::Header;
+use http::{HeaderMap, HeaderValue, Request};
 use worker::send::SendWrapper;
-use worker::{console_log, request_to_wasm, HttpResponse, ObjectNamespace, Stub};
+use worker::{console_log, request_to_wasm, Cf, Env, HttpResponse, ObjectNamespace, Stub};
+
+use super::routing::{Location, DEFAULT_LOCATION};
 
 #[derive(Clone)]
-pub struct MessageBroker {
-    msg_broker: Arc<SendWrapper<Stub>>,
+pub struct WebsocketBroker {
+    stub: Arc<SendWrapper<Stub>>,
 }
 
-impl MessageBroker {
-    pub fn from_namespace(ns: &ObjectNamespace) -> worker::Result<Self> {
-        // TODO: per-region instances
-        let msg_broker = Arc::new(SendWrapper(ns.id_from_name("single-instance")?.get_stub()?));
-        Ok(Self { msg_broker })
+impl WebsocketBroker {
+    pub fn from_env(env: &Env, h: &HeaderMap<HeaderValue>) -> worker::Result<Self> {
+        let ns = env.durable_object("JETSTREAMLISTENER")?;
+
+        let location = h
+            .get("CF-IPCountry")
+            .and_then(|h| h.to_str().ok())
+            .and_then(Location::from_country_code)
+            .unwrap_or(DEFAULT_LOCATION);
+
+        let stub = location.to_durable_object_stub(&ns)?;
+
+        let stub = Arc::new(SendWrapper(stub));
+        Ok(Self { stub })
     }
 
     pub async fn subscriber_websocket(&self) -> Result<HttpResponse, AppError> {
@@ -30,7 +42,7 @@ impl MessageBroker {
         request.headers_mut()?.append("Upgrade", "websocket")?;
 
         let resp = self
-            .msg_broker
+            .stub
             .fetch_with_request(request)
             .await
             .context("error calling stub")?;
@@ -50,7 +62,7 @@ impl MessageBroker {
         let req = request_to_wasm(req).context("building req")?;
 
         // send update to message broker
-        self.msg_broker
+        self.stub
             .fetch_with_request(req.into())
             .await
             .map_err(|e| anyhow!("fetch with request {e:?}"))?;
@@ -72,7 +84,7 @@ impl MessageBroker {
         let req = request_to_wasm(req).context("building req")?;
 
         // send update to message broker
-        self.msg_broker
+        self.stub
             .fetch_with_request(req.into())
             .await
             .map_err(|e| anyhow!("fetch with request {e:?}"))?;

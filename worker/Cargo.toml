@@ -48,6 +48,7 @@ getrandom = { version = "0.2.15", features = ["js"] }
 time = {version = "0.3.41", features = ["wasm-bindgen"]}
 serde-wasm-bindgen = "0.6.5"
 atrium-xrpc = "0.12.2"
+rand = { version = "0.9.1", default-features = false, features = ["small_rng"] }
 
 [build-dependencies]
 askama = "0.13"

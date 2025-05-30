@@ -127,7 +127,8 @@ pub async fn status(
     State(AppState {
         oauth,
         status_db,
-        durable_object,
+        websocket_broker,
+        ..
     }): State<AppState>,
     session: Session,
     form: Json<StatusForm>,
@@ -151,22 +152,26 @@ pub async fn status(
         .save_optimistic(&status)
         .await
         .context("saving status")?;
-    durable_object.broadcast(status).await?;
+    websocket_broker.broadcast(status).await?;
 
     Ok(())
 }
 
 #[worker::send]
 pub async fn websocket(
-    State(AppState { durable_object, .. }): State<AppState>,
+    State(AppState {
+        websocket_broker, ..
+    }): State<AppState>,
     TypedHeader(_upgrade_to_websocket): TypedHeader<Upgrade>,
 ) -> Result<HttpResponse, AppError> {
-    durable_object.subscriber_websocket().await
+    websocket_broker.subscriber_websocket().await
 }
 
 #[worker::send]
 pub async fn admin_publish_jetstream_event(
-    State(AppState { durable_object, .. }): State<AppState>,
+    State(AppState {
+        jetstream_listener, ..
+    }): State<AppState>,
     // deliberately only implementing basic authorization because it's not the
     // focus of this post - do not use this in production apps
     TypedHeader(auth): TypedHeader<Authorization<headers::authorization::Basic>>,
@@ -177,7 +182,7 @@ pub async fn admin_publish_jetstream_event(
         return Err(AppError::NoAdminAuth);
     }
 
-    durable_object.broadcast_jetstream_event(status).await?;
+    jetstream_listener.broadcast_jetstream_event(status).await?;
 
     Ok(())
 }
