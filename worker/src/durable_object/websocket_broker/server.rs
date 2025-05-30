@@ -1,39 +1,23 @@
 use crate::services::resolvers;
 use crate::services::resolvers::did_resolver;
 use crate::storage::db::StatusDb;
-use crate::types::errors::AppError;
-use crate::types::status::Status;
 use crate::types::status::StatusFromDb;
 use crate::types::status::StatusWithHandle;
-use atrium_api::types::Collection as _;
 use atrium_common::resolver::Resolver;
 use atrium_oauth::DefaultHttpClient;
 use serde_json::json;
 use std::sync::Arc;
-use worker::console_error;
 use worker::Method;
 use worker::{
     console_log, durable_object, wasm_bindgen, wasm_bindgen_futures, Env, State, WebSocket,
     WebSocketIncomingMessage, WebSocketPair,
 };
 
-use worker::WebsocketEvent;
-
-use crate::types::jetstream::{Event, Operation};
-use crate::types::lexicons::xyz;
-use anyhow::anyhow;
 use atrium_api::types::string::Did;
-use chrono::Utc;
-use futures::StreamExt as _;
-
-// read from jetstream once per minute
-const ALARM_INTERVAL_MS: i64 = 60 * 1000;
-const MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS: usize = 15;
 
 #[durable_object]
 pub struct MsgBroker {
     state: State,
-    env: Env,
     status_db: StatusDb,
     did_resolver: resolvers::DidResolver,
     alarms_without_active_websockets: usize,
@@ -48,7 +32,6 @@ impl DurableObject for MsgBroker {
         let did_resolver = did_resolver(&Arc::new(DefaultHttpClient::default()), &kv);
 
         Self {
-            env,
             state,
             status_db,
             did_resolver,
@@ -154,11 +137,3 @@ impl MsgBroker {
         worker::Response::from_websocket(ws.client)
     }
 }
-
-#[derive(PartialEq, Eq)]
-enum ListenerMode {
-    Scheduled,
-    LivePush,
-}
-
-type TimestampMicros = u64;

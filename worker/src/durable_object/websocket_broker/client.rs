@@ -1,14 +1,11 @@
 use std::sync::Arc;
 
 use crate::types::errors::AppError;
-use crate::types::jetstream;
-use crate::types::lexicons::xyz;
 use crate::types::status::StatusFromDb;
 use anyhow::{anyhow, Context as _};
-use headers::Header;
 use http::{HeaderMap, HeaderValue, Request};
 use worker::send::SendWrapper;
-use worker::{console_log, request_to_wasm, Cf, Env, HttpResponse, ObjectNamespace, Stub};
+use worker::{console_log, request_to_wasm, Env, HttpResponse, Stub};
 
 use super::routing::{all_stubs, Location, DEFAULT_LOCATION};
 

@@ -1,8 +1,7 @@
 // use crate::services::jetstream_listener;
 use axum::response::IntoResponse;
 use durable_object::{
-    jetstream_listener::{self, client::JetstreamListener},
-    websocket_broker::{self, client::WebsocketBroker},
+    jetstream_listener::client::JetstreamListener, websocket_broker::client::WebsocketBroker,
 };
 use frontend_worker::{router::router, state::AppState};
 use services::oauth::OAuthClient;

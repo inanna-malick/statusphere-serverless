@@ -1,22 +1,12 @@
-use crate::durable_object::websocket_broker;
 use crate::durable_object::websocket_broker::client::WebsocketBroker;
-use crate::services::resolvers;
-use crate::services::resolvers::did_resolver;
 use crate::storage::db::StatusDb;
 use crate::types::errors::AppError;
 use crate::types::status::Status;
-use crate::types::status::StatusFromDb;
-use crate::types::status::StatusWithHandle;
 use atrium_api::types::Collection as _;
-use atrium_common::resolver::Resolver;
-use atrium_oauth::DefaultHttpClient;
-use serde_json::json;
-use std::sync::Arc;
 use worker::console_error;
 use worker::Method;
 use worker::{
     console_log, durable_object, wasm_bindgen, wasm_bindgen_futures, Env, State, WebSocket,
-    WebSocketIncomingMessage, WebSocketPair,
 };
 
 use worker::WebsocketEvent;
@@ -49,7 +39,6 @@ impl DurableObject for JetstreamListener {
         //       if these don't exist
         // TODO: ah yes, oncecell - just create empty oncecell here and save env, then construct
         //       the fallible parts later
-        let kv = Arc::new(env.kv("KV").expect("invalid KV binding"));
         let status_db = StatusDb::from_env(&env).expect("invalid D1 DB binding");
 
         let websocket_brokers = WebsocketBroker::for_all_brokers(&env)

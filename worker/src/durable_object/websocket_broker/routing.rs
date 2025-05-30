@@ -1,4 +1,4 @@
-use chrono::{Timelike, Utc};
+use chrono::Utc;
 use worker::{console_log, durable, ObjectNamespace};
 
 const LOCATION_SHARDS: [(Location, usize); 9] = [
@@ -102,7 +102,7 @@ impl Location {
 
     // note shard number is hash of ray id
     pub fn to_durable_object_stub(
-        &self,
+        self,
         ns: &ObjectNamespace,
     ) -> Result<durable::Stub, worker::Error> {
         let shard_count = self.allocated_node_count();
@@ -352,7 +352,6 @@ impl Location {
                     "EG", // Egypt
                     "IR", // Iran
                     "IQ", // Iraq
-                    "IL", // Israel
                     "JO", // Jordan
                     "KW", // Kuwait
                     "LB", // Lebanon

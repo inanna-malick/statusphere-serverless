@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use crate::types::errors::AppError;
 use crate::types::jetstream;
 use crate::types::lexicons::xyz;
-use crate::types::status::StatusFromDb;
 use anyhow::{anyhow, Context as _};
 use http::Request;
 use worker::send::SendWrapper;
-use worker::{console_log, request_to_wasm, Env, HttpResponse, ObjectNamespace, Stub};
+use worker::{request_to_wasm, Env, Stub};
 
 #[derive(Clone)]
 pub struct JetstreamListener {
