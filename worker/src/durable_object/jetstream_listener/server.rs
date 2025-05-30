@@ -1,3 +1,5 @@
+use crate::durable_object::websocket_broker;
+use crate::durable_object::websocket_broker::client::WebsocketBroker;
 use crate::services::resolvers;
 use crate::services::resolvers::did_resolver;
 use crate::storage::db::StatusDb;
@@ -36,23 +38,28 @@ pub struct JetstreamListener {
     state: State,
     env: Env,
     status_db: StatusDb,
-    did_resolver: resolvers::DidResolver,
+    websocket_brokers: Vec<WebsocketBroker>,
     alarms_since_keepalive: usize,
 }
 
 #[durable_object]
 impl DurableObject for JetstreamListener {
     fn new(state: State, env: Env) -> Self {
+        // TODO: expect panics, this is bad, but idk what else to do - invalid state
+        //       if these don't exist
+        // TODO: ah yes, oncecell - just create empty oncecell here and save env, then construct
+        //       the fallible parts later
         let kv = Arc::new(env.kv("KV").expect("invalid KV binding"));
         let status_db = StatusDb::from_env(&env).expect("invalid D1 DB binding");
 
-        let did_resolver = did_resolver(&Arc::new(DefaultHttpClient::default()), &kv);
+        let websocket_brokers = WebsocketBroker::for_all_brokers(&env)
+            .expect("invalid websocket durable object config");
 
         Self {
             env,
             state,
             status_db,
-            did_resolver,
+            websocket_brokers,
             alarms_since_keepalive: 0,
         }
     }
@@ -155,21 +162,6 @@ impl DurableObject for JetstreamListener {
 }
 
 impl JetstreamListener {
-    async fn resolve_handle_for_did(&self, did: &Did) -> Option<String> {
-        match self.did_resolver.resolve(did).await {
-            Ok(did_doc) => {
-                // also known as list is in priority order so take first
-                did_doc
-                    .also_known_as
-                    .and_then(|akas| akas.first().map(|s| format!("@{}", s).replace("at://", "")))
-            }
-            Err(err) => {
-                console_log!("Error resolving did: {err}");
-                None
-            }
-        }
-    }
-
     async fn ingest(&mut self, cursor: TimestampMicros) -> anyhow::Result<Option<TimestampMicros>> {
         let mut last_seen = None;
 

@@ -53,7 +53,7 @@ async fn fetch(
     };
 
     let jetstream_listener = JetstreamListener::from_env(&env)?;
-    let websocket_broker = WebsocketBroker::from_env(&env, req.headers())?;
+    let websocket_broker = WebsocketBroker::from_env_and_header(&env, req.headers())?;
 
     let session_store = KvStoreWrapper::new(kv, "tower:session", SESSION_STORE_TTL);
 

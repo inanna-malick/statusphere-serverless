@@ -10,7 +10,7 @@ use http::{HeaderMap, HeaderValue, Request};
 use worker::send::SendWrapper;
 use worker::{console_log, request_to_wasm, Cf, Env, HttpResponse, ObjectNamespace, Stub};
 
-use super::routing::{Location, DEFAULT_LOCATION};
+use super::routing::{all_stubs, Location, DEFAULT_LOCATION};
 
 #[derive(Clone)]
 pub struct WebsocketBroker {
@@ -18,7 +18,7 @@ pub struct WebsocketBroker {
 }
 
 impl WebsocketBroker {
-    pub fn from_env(env: &Env, h: &HeaderMap<HeaderValue>) -> worker::Result<Self> {
+    pub fn from_env_and_header(env: &Env, h: &HeaderMap<HeaderValue>) -> worker::Result<Self> {
         let ns = env.durable_object("JETSTREAMLISTENER")?;
 
         let location = h
@@ -31,6 +31,20 @@ impl WebsocketBroker {
 
         let stub = Arc::new(SendWrapper(stub));
         Ok(Self { stub })
+    }
+
+    pub fn for_all_brokers(env: &Env) -> worker::Result<Vec<Self>> {
+        let ns = env.durable_object("JETSTREAMLISTENER")?;
+
+        let stubs = all_stubs(&ns)?;
+
+        let stubs = stubs
+            .into_iter()
+            .map(SendWrapper)
+            .map(Arc::new)
+            .map(|stub| Self { stub })
+            .collect();
+        Ok(stubs)
     }
 
     pub async fn subscriber_websocket(&self) -> Result<HttpResponse, AppError> {
@@ -55,28 +69,6 @@ impl WebsocketBroker {
         let req = Request::builder()
             .method("POST")
             .uri("https://stub.com/broadcast_status")
-            .header("Content-Type", "application/json")
-            .body(serde_json::to_string(&status).context("convert to json")?)
-            .context("building request")?;
-
-        let req = request_to_wasm(req).context("building req")?;
-
-        // send update to message broker
-        self.stub
-            .fetch_with_request(req.into())
-            .await
-            .map_err(|e| anyhow!("fetch with request {e:?}"))?;
-
-        Ok(())
-    }
-
-    pub async fn broadcast_jetstream_event(
-        &self,
-        status: jetstream::Event<xyz::statusphere::status::RecordData>,
-    ) -> anyhow::Result<()> {
-        let req = Request::builder()
-            .method("POST")
-            .uri("https://stub.com/broadcast_jetstream_event")
             .header("Content-Type", "application/json")
             .body(serde_json::to_string(&status).context("convert to json")?)
             .context("building request")?;

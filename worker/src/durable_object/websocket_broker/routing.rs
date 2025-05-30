@@ -57,7 +57,7 @@ fn all_durable_object_ids() -> Vec<(Location, String)> {
     res
 }
 
-fn all_stubs(ns: &ObjectNamespace) -> Result<Vec<durable::Stub>, worker::Error> {
+pub fn all_stubs(ns: &ObjectNamespace) -> Result<Vec<durable::Stub>, worker::Error> {
     let mut res = Vec::new();
     for (location, name) in all_durable_object_ids() {
         let id = ns.id_from_name(&name)?;
