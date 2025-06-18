@@ -84,4 +84,17 @@ impl StatusDb {
         .await?
         .results()
     }
+
+    /// Loads the last n statuses for template seeding (same as load_latest_statuses but 
+    /// semantically different use case - could be optimized differently in the future)
+    pub async fn load_recent_statuses_for_seeding(&self, n: usize) -> Result<Vec<StatusFromDb>> {
+        query!(
+            &self.0,
+            "SELECT * FROM status ORDER BY indexedAt DESC LIMIT ?1",
+            n
+        )?
+        .all()
+        .await?
+        .results()
+    }
 }
