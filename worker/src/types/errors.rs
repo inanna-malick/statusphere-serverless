@@ -7,6 +7,8 @@ pub enum AppError {
     Misc(#[from] anyhow::Error),
     #[error(transparent)]
     Worker(#[from] worker::Error),
+    // #[error(transparent)]
+    // WorkerKV(#[from] worker::kv::KvError),
     #[error(transparent)]
     SessionManagement(#[from] tower_sessions::session::Error),
     #[error("Something went wrong in the Oauth flow: {0}")]

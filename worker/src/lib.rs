@@ -1,3 +1,4 @@
+use atrium_oauth::DefaultHttpClient;
 // use crate::services::jetstream_listener;
 use axum::response::IntoResponse;
 use durable_object::client::MessageBroker;
@@ -6,9 +7,11 @@ use services::oauth::OAuthClient;
 use std::sync::Arc;
 use std::time::Duration;
 use storage::{db::StatusDb, kv::KvStoreWrapper};
-use worker::{console_debug, event, Context, Env, HttpRequest};
+use worker::{console_debug, console_error, console_log, event, Context, Env, HttpRequest, ScheduleContext, ScheduledEvent};
 
 use tower::Service as _;
+
+use crate::{frontend_worker::state::ScheduledEventState, services::{jetstream::ingest_, resolvers}};
 
 mod durable_object;
 mod frontend_worker;
@@ -18,7 +21,7 @@ mod types;
 
 const SESSION_STORE_TTL: Duration = Duration::new(60 * 60 * 24 * 30, 0);
 
-#[event(fetch)]
+#[event(fetch, respond_with_errors)]
 async fn fetch(
     req: HttpRequest,
     env: Env,
@@ -52,13 +55,29 @@ async fn fetch(
     let ns = env.durable_object("MSGBROKER")?;
     let durable_object = MessageBroker::from_namespace(&ns)?;
 
+    let did_resolver = resolvers::did_resolver(&Arc::new(DefaultHttpClient::default()), &kv);
     let session_store = KvStoreWrapper::new(kv, "tower:session", SESSION_STORE_TTL);
 
     let state = AppState {
         oauth: client,
         status_db,
         durable_object,
+        did_resolver: Arc::new(did_resolver),
     };
 
     Ok(router(state, session_store).call(req).await?)
+}
+
+// IMPL ttl by checking last time app used or w/e
+#[event(scheduled, respond_with_errors)]
+async fn scheduled(s: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    console_error_panic_hook::set_once();
+
+
+    match ingest_(env).await {
+        Ok(_) => console_log!("done with scheduled jetstream reader"),
+        Err(e) => console_error!("error on scheduled jetstream reader, {}", e),
+    }
+
+    // jetstream::alarm().await...
 }

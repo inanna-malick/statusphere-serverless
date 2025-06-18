@@ -2,7 +2,10 @@ use crate::types::jetstream;
 use crate::types::lexicons::xyz;
 use crate::types::status::STATUS_OPTIONS;
 use crate::{types::errors::AppError, types::templates::HomeTemplate};
-use crate::{types::status::Status, types::templates::Profile};
+use crate::{
+    types::status::{Status, StatusWithHandle},
+    types::templates::Profile,
+};
 use anyhow::Context as _;
 use atrium_api::types::string::Handle;
 use atrium_oauth::{CallbackParams, OAuthClientMetadata};
@@ -62,9 +65,36 @@ pub async fn login(
 /// Render the home page
 #[worker::send]
 pub async fn home(
-    State(AppState { oauth, .. }): State<AppState>,
+    State(AppState {
+        oauth,
+        status_db,
+        did_resolver,
+        ..
+    }): State<AppState>,
     session: tower_sessions::Session,
 ) -> Result<HomeTemplate, AppError> {
+    // Fetch recent statuses for template seeding (no handle resolution for now)
+    let recent_statuses = match status_db.load_latest_statuses(20).await {
+        Ok(statuses) => {
+            let mut statuses_with_handles = Vec::new();
+            for s in statuses.into_iter() {
+                let mut status = crate::types::status::StatusWithHandle::from(s);
+                status.handle = did_resolver
+                    .resolve_handle_for_did(&status.author_did)
+                    .await;
+                statuses_with_handles.push(status);
+            }
+            // enforce chronological ordering
+            statuses_with_handles.sort_by_key(|s| s.created_at);
+            statuses_with_handles.reverse();
+            statuses_with_handles
+        }
+        Err(e) => {
+            console_log!("Error loading recent statuses for seeding: {}", e);
+            Vec::new()
+        }
+    };
+
     let did = if let Some(did) = session.get("did").await? {
         did
     } else {
@@ -72,6 +102,7 @@ pub async fn home(
             status_options: &STATUS_OPTIONS,
             profile: None,
             my_status: None,
+            recent_statuses,
         });
     };
 
@@ -94,6 +125,7 @@ pub async fn home(
                 status_options: &STATUS_OPTIONS,
                 profile: None,
                 my_status: None,
+                recent_statuses,
             });
         }
         Err(e) => return Err(e),
@@ -112,6 +144,7 @@ pub async fn home(
             display_name: Some(username),
         }),
         my_status: current_status,
+        recent_statuses,
     })
 }
 
@@ -128,10 +161,11 @@ pub async fn status(
         oauth,
         status_db,
         durable_object,
+        did_resolver,
     }): State<AppState>,
     session: Session,
     form: Json<StatusForm>,
-) -> Result<(), AppError> {
+) -> Result<Json<StatusWithHandle>, AppError> {
     console_log!("status handler");
     let did = session.get("did").await?.ok_or(AppError::NoSessionAuth)?;
 
@@ -147,13 +181,20 @@ pub async fn status(
     let uri = agent.create_status(form.status.clone()).await?.uri;
 
     let status = Status::new(uri, did, form.status.clone());
-    let status = status_db
+    let status_from_db = status_db
         .save_optimistic(&status)
         .await
         .context("saving status")?;
-    durable_object.broadcast(status).await?;
 
-    Ok(())
+    // Broadcast to WebSocket clients
+    durable_object.broadcast(status_from_db.clone()).await?;
+
+    // Convert to StatusWithHandle and return as JSON
+    let mut status_with_handle = StatusWithHandle::from(status_from_db);
+    status_with_handle.handle = did_resolver
+        .resolve_handle_for_did(&status_with_handle.author_did)
+        .await;
+    Ok(Json(status_with_handle))
 }
 
 #[worker::send]

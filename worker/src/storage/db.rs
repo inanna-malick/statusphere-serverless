@@ -84,4 +84,42 @@ impl StatusDb {
         .await?
         .results()
     }
+
+    /// Gets the last seen jetstream cursor timestamp
+    pub async fn get_jetstream_cursor(&self) -> Result<Option<u64>> {
+        let result = query!(
+            &self.0,
+            "SELECT last_seen_timestamp FROM jetstream_cursor"
+        )
+        .first::<u64>(Some("last_seen_timestamp"))
+        .await?;
+
+        Ok(result)
+    }
+
+    /// Updates the jetstream cursor timestamp
+    pub async fn update_jetstream_cursor(&self, timestamp: u64) -> Result<()> {
+        query!(
+            &self.0,
+            "UPDATE jetstream_cursor SET last_seen_timestamp = ?1",
+            timestamp
+        )?
+        .run()
+        .await?;
+
+        Ok(())
+    }
+    
+    /// Inserts the initial jetstream cursor timestamp
+    pub async fn insert_jetstream_cursor(&self, timestamp: u64) -> Result<()> {
+        query!(
+            &self.0,
+            "INSERT INTO jetstream_cursor (last_seen_timestamp) VALUES (?1)",
+            timestamp
+        )?
+        .run()
+        .await?;
+
+        Ok(())
+    }
 }

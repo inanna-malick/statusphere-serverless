@@ -3,9 +3,7 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2025-04-08"
 
 [build]
-# needed to make "Deploy with Cloudflare" button work, installs rust via rustup
-# if we're in CI and don't have Cargo
-command = "./custom_build.sh"
+command = "cargo install -q worker-build && worker-build --release"
 watch_dir = ["src", "public", "templates"]
 
 # database for status records
@@ -26,8 +24,8 @@ id = "511f1dc7efdf4eba8c0df504c3864b04"
 enabled = true
 invocation_logs = false
 
-[vars]
-SCHEDULED_ALARM = "true"
+[triggers]
+crons = [ "*/1 * * * *" ]
 
 # serves css without having to spin up a worker
 [assets]
