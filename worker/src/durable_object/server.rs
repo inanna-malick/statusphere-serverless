@@ -222,6 +222,26 @@ impl MsgBroker {
 
     async fn subscribe_websocket(&mut self) -> worker::Result<worker::Response> {
         console_log!("subscriber websocket server");
+        
+        // Check current WebSocket connection count for load shedding
+        let current_connections = self.state.get_websockets().len();
+        const MAX_WEBSOCKET_CONNECTIONS: usize = 500;
+        
+        if current_connections >= MAX_WEBSOCKET_CONNECTIONS {
+            console_log!(
+                "WebSocket connection limit reached ({}/{}), rejecting new connection for load shedding",
+                current_connections,
+                MAX_WEBSOCKET_CONNECTIONS
+            );
+            return worker::Response::error("Server overloaded, please try again later", 503);
+        }
+        
+        console_log!(
+            "Accepting new WebSocket connection ({}/{})",
+            current_connections + 1,
+            MAX_WEBSOCKET_CONNECTIONS
+        );
+        
         // no need to check headers, if we're here the frontend worker already did so
         let ws = WebSocketPair::new()?;
         self.state.accept_web_socket(&ws.server);
