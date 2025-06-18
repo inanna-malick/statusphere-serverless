@@ -62,9 +62,23 @@ pub async fn login(
 /// Render the home page
 #[worker::send]
 pub async fn home(
-    State(AppState { oauth, .. }): State<AppState>,
+    State(AppState { oauth, status_db, .. }): State<AppState>,
     session: tower_sessions::Session,
 ) -> Result<HomeTemplate, AppError> {
+    // Fetch recent statuses for template seeding (no handle resolution for now)
+    let recent_statuses = match status_db.load_recent_statuses_for_seeding(20).await {
+        Ok(statuses) => statuses.into_iter().map(|s| {
+            let mut status = crate::types::status::StatusWithHandle::from(s);
+            // Leave handle as None for now - we'll resolve handles in a future enhancement
+            status.handle = None;
+            status
+        }).collect(),
+        Err(e) => {
+            console_log!("Error loading recent statuses for seeding: {}", e);
+            Vec::new()
+        }
+    };
+
     let did = if let Some(did) = session.get("did").await? {
         did
     } else {
@@ -72,6 +86,7 @@ pub async fn home(
             status_options: &STATUS_OPTIONS,
             profile: None,
             my_status: None,
+            recent_statuses,
         });
     };
 
@@ -94,6 +109,7 @@ pub async fn home(
                 status_options: &STATUS_OPTIONS,
                 profile: None,
                 my_status: None,
+                recent_statuses,
             });
         }
         Err(e) => return Err(e),
@@ -112,6 +128,7 @@ pub async fn home(
             display_name: Some(username),
         }),
         my_status: current_status,
+        recent_statuses,
     })
 }
 

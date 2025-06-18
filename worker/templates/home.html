@@ -52,7 +52,26 @@
 
             {% endfor %}
         </form.status>
-        <div id="statuscontainer"> </div>
+        <div id="statuscontainer">
+            {% for status in recent_statuses %}
+            <div class="status-line tooltip" id="{{ status.uri.replace("/", "_").replace(":", "_").replace(".", "_") }}">
+                <div class="status">{{ status.status }}</div>
+                <div class="desc">
+                    <a class="author" href="https://bsky.app/profile/{{ status.author_did.as_str() }}">
+                        {% match status.handle %}{% when Some with (handle) %}{{ handle }}{% when None %}{{ status.author_did.as_str() }}{% endmatch %}
+                    </a>
+                    is feeling {{ status.status }}
+                </div>
+                <div class="tooltiptext">
+                    {% if status.created_via_this_app %}[created via this app]{% endif %}
+                    {% if status.seen_on_jetstream %}
+                        {% if status.created_via_this_app %}<br>{% endif %}
+                        [observed via jetstream ✅]
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {%endblock content%}
@@ -62,7 +81,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
 <script type="text/javascript">
 let currentWebSocket = null;
-let hasRecievedStatuses = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const INITIAL_RECONNECT_DELAY = 1000; // 1 second
@@ -133,13 +151,7 @@ function join() {
 
   ws.addEventListener("open", event => {
     currentWebSocket = ws;
-    // tells the server to send us the last n status events
-    // if we haven't received any yet, eg if this is the first
-    // websocket conn or the last one died before getting a chance to do so
-    if (!hasRecievedStatuses) {
-      ws.send("ready");
-    }
-
+    console.log("WebSocket connected successfully");
   });
 
   ws.addEventListener("message", event => {
@@ -149,8 +161,6 @@ function join() {
       console.log("error from backend", data)
     } else {
       console.log("status from backend", data)
-      hasRecievedStatuses = true;
-
 
       let id = data.uri.replaceAll("/", "_").replaceAll(":", "_").replaceAll(".", "_");
       console.log("normalized id ::   " + id);

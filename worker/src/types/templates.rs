@@ -5,6 +5,7 @@ use axum::response::{Html, IntoResponse};
 use serde::{Deserialize, Serialize};
 
 use super::lexicons::xyz::statusphere::status;
+use super::status::StatusWithHandle;
 
 #[derive(Template)]
 #[template(path = "home.html")]
@@ -12,6 +13,7 @@ pub struct HomeTemplate {
     pub status_options: &'static [&'static str],
     pub profile: Option<Profile>,
     pub my_status: Option<status::RecordData>,
+    pub recent_statuses: Vec<StatusWithHandle>,
 }
 
 impl IntoResponse for HomeTemplate {

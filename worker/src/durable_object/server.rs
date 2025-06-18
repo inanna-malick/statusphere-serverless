@@ -64,17 +64,8 @@ impl DurableObject for MsgBroker {
         // TODO: getting more of these than makes sense
         match message {
             WebSocketIncomingMessage::String(s) if s == "ready" => {
-                console_log!("got ready message, queueing up last 10 statuses");
-
-                let mut last_10 = self.status_db.load_latest_statuses(10).await?;
-                last_10.reverse();
-
-                for status in last_10.into_iter() {
-                    let mut status = StatusWithHandle::from(status);
-                    status.handle = self.resolve_handle_for_did(&status.author_did).await;
-
-                    ws.send(&status)?
-                }
+                console_log!("got ready message (deprecated - statuses now seeded in template)");
+                // No-op for backward compatibility
             }
             _ => {
                 console_log!("unexpected incoming message");
