@@ -63,6 +63,9 @@
 <script type="text/javascript">
 let currentWebSocket = null;
 let hasRecievedStatuses = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const INITIAL_RECONNECT_DELAY = 1000; // 1 second
 
 // TODO: use to update hightlighted status on event updating
 //       status for current user
@@ -108,12 +111,20 @@ function join() {
       rejoined = true;
       currentWebSocket = null;
 
-      // Don't try to reconnect too rapidly.
-      let timeSinceLastJoin = Date.now() - startTime;
-      if (timeSinceLastJoin < 10000) {
-        // Less than 10 seconds elapsed since last join. Pause a bit.
-        await new Promise(resolve => setTimeout(resolve, 10000 - timeSinceLastJoin));
+      // Check if we've exceeded max reconnect attempts
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.log("Max reconnection attempts reached. Stopping reconnection attempts.");
+        return;
       }
+
+      // Calculate exponential backoff delay
+      const delay = Math.min(INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts), 30000); // Max 30 seconds
+      reconnectAttempts++;
+      
+      console.log(`Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`);
+      
+      // Wait for the calculated delay
+      await new Promise(resolve => setTimeout(resolve, delay));
 
       // OK, reconnect now!
       join();
