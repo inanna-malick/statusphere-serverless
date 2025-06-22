@@ -53,24 +53,6 @@
             {% endfor %}
         </form.status>
         <div id="statuscontainer">
-            {% for status in recent_statuses %}
-            <div class="status-line tooltip" id="{{ status.uri.replace("/", "_").replace(":", "_").replace(".", "_") }}">
-                <div class="status">{{ status.status }}</div>
-                <div class="desc">
-                    <a class="author" href="https://bsky.app/profile/{{ status.author_did.as_str() }}">
-                        {% match status.handle %}{% when Some with (handle) %}{{ handle }}{% when None %}{{ status.author_did.as_str() }}{% endmatch %}
-                    </a>
-                    is feeling {{ status.status }}
-                </div>
-                <div class="tooltiptext">
-                    {% if status.created_via_this_app %}[created via this app]{% endif %}
-                    {% if status.seen_on_jetstream %}
-                        {% if status.created_via_this_app %}<br>{% endif %}
-                        [observed via jetstream ✅]
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
         </div>
     </div>
 </div>
@@ -80,6 +62,9 @@
 <!-- Client-side JavaScript code for the app. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
 <script type="text/javascript">
+// Initial statuses data
+const initialStatuses = {{ self.recent_statuses_json()|safe }};
+
 let currentWebSocket = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -95,13 +80,91 @@ const did = null;
 
 let hostname = window.location.host;
 
+// Function to render a status element
+function renderStatus(data) {
+    let id = data.uri.replaceAll("/", "_").replaceAll(":", "_").replaceAll(".", "_");
+    console.log("normalized id ::   " + id);
+
+    let statusWrapper = null;
+    let preexisting = $("#" + id);
+
+    let updating_existing = false;
+
+    if (preexisting.length == 0) {
+        statusWrapper = $('<div>', {
+            class: "status-line tooltip",
+            id: id
+        });
+    } else {
+        preexisting.empty();
+        statusWrapper = preexisting;
+        updating_existing = true;
+    }
+
+    let status = $('<div>', {
+        class: "status",
+        text: data.status
+    });
+
+    let desc = $('<div>', {
+        class: "desc",
+    });
+    let author = $('<a>', {
+        class: "author",
+        href: "https://bsky.app/profile/" + data.author_did,
+        text: data.handle ? data.handle : data.author_did
+    });
+    desc.append(author);
+    desc.append(document.createTextNode(" is feeling " + data.status));
+    let tooltip = $('<div>', { class: "tooltiptext"});
+    if (data.created_via_this_app) {
+        tooltip.append(document.createTextNode("[created via this app]"));
+    }
+    if (data.seen_on_jetstream) {
+        if (data.created_via_this_app) {
+            tooltip.append($('<br>'));
+        }
+        tooltip.append(document.createTextNode("[observed via jetstream ✅]"));
+    }
+
+    statusWrapper.append(status);
+    statusWrapper.append(desc);
+    statusWrapper.append(tooltip);
+
+    // Update selected status button if this is the current user's status
+    if (did && data.author_did === did) {
+        $('.status-option').removeClass('selected');
+        $('.status-option').each(function() {
+            if ($(this).text() === data.status) {
+                $(this).addClass('selected');
+            }
+        });
+    }
+
+    if (!updating_existing) {
+        $("#statuscontainer").prepend(statusWrapper);
+    }
+}
+
+// Initialize status container with initial data
+$(document).ready(function() {
+    // Render initial statuses in reverse order so newest appears at top
+    initialStatuses.reverse().forEach(function(status) {
+        renderStatus(status);
+    });
+});
+
 $('#status-form').on('submit',function(e){
     e.preventDefault();
-    let data =  e.originalEvent.submitter;
+    let submitter = e.originalEvent.submitter;
     console.log("event data");
-    console.log(data);
+    console.log(submitter);
 
-    let toSend = { "status": data.innerText };
+    let toSend = { "status": submitter.innerText };
+
+    // Update button selection immediately for better UX
+    $('.status-option').removeClass('selected');
+    $(submitter).addClass('selected');
 
     $.ajax({
         type     : "POST",
@@ -111,7 +174,15 @@ $('#status-form').on('submit',function(e){
         contentType: "application/json; charset=utf-8",
         dataType : "json",
         success  : function(data) {
-            console.log("onsubmit success", data)
+            console.log("onsubmit success", data);
+            // Immediately render the status in the UI
+            renderStatus(data);
+        },
+        error: function(xhr, status, error) {
+            console.error("Status update failed:", error);
+            // Revert button selection on error
+            $('.status-option').removeClass('selected');
+            // TODO: Re-select the previous status if known
         }
     });
 
@@ -161,65 +232,7 @@ function join() {
       console.log("error from backend", data)
     } else {
       console.log("status from backend", data)
-
-      let id = data.uri.replaceAll("/", "_").replaceAll(":", "_").replaceAll(".", "_");
-      console.log("normalized id ::   " + id);
-
-      let statusWrapper = null;
-      let preexisting = $("#" + id);
-
-      let updating_existing = false;
-
-      if (preexisting.length == 0) {
-        statusWrapper = preexisting;
-        statusWrapper = $('<div>', {
-          class: "status-line tooltip",
-          id: id
-        });
-      } else {
-        preexisting.empty();
-        statusWrapper = preexisting;
-        updating_existing = true;
-      }
-
-
-      let status = $('<div>', {
-        class: "status",
-        text: data.status
-      });
-
-      let desc = $('<div>', {
-        class: "desc",
-      });
-      let author = $('<a>', {
-        class: "author",
-        href: "https://bsky.app/profile/" + data.author_did,
-        text: data.handle ? data.handle : data.author_did
-      });
-      desc.append(author);
-      desc.append(document.createTextNode(" is feeling " + data.status));
-      let tooltip = $('<div>', { class: "tooltiptext"});
-      if (data.created_via_this_app) {
-        tooltip.append(document.createTextNode("[created via this app]"));
-      }
-      if (data.seen_on_jetstream) {
-        if (data.created_via_this_app) {
-          tooltip.append($('<br>'));
-        }
-        tooltip.append(document.createTextNode("[observed via jetstream ✅]"));
-      }
-
-      statusWrapper.append(status);
-      statusWrapper.append(desc);
-      statusWrapper.append(tooltip);
-
-
-      // TODO: if global did matches did of status event update selected 'current' status from page load
-
-      if (!updating_existing) {
-        $("#statuscontainer").prepend(statusWrapper);
-      }
-
+      renderStatus(data);
     }
   });
 

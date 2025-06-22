@@ -16,6 +16,12 @@ pub struct HomeTemplate {
     pub recent_statuses: Vec<StatusWithHandle>,
 }
 
+impl HomeTemplate {
+    pub fn recent_statuses_json(&self) -> String {
+        serde_json::to_string(&self.recent_statuses).unwrap_or_else(|_| "[]".to_string())
+    }
+}
+
 impl IntoResponse for HomeTemplate {
     fn into_response(self) -> axum::response::Response {
         let html = self.render().expect("template should be valid");

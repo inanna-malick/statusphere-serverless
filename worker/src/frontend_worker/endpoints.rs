@@ -2,7 +2,7 @@ use crate::types::jetstream;
 use crate::types::lexicons::xyz;
 use crate::types::status::STATUS_OPTIONS;
 use crate::{types::errors::AppError, types::templates::HomeTemplate};
-use crate::{types::status::Status, types::templates::Profile};
+use crate::{types::status::{Status, StatusWithHandle}, types::templates::Profile};
 use anyhow::Context as _;
 use atrium_api::types::string::Handle;
 use atrium_oauth::{CallbackParams, OAuthClientMetadata};
@@ -148,7 +148,7 @@ pub async fn status(
     }): State<AppState>,
     session: Session,
     form: Json<StatusForm>,
-) -> Result<(), AppError> {
+) -> Result<Json<StatusWithHandle>, AppError> {
     console_log!("status handler");
     let did = session.get("did").await?.ok_or(AppError::NoSessionAuth)?;
 
@@ -164,13 +164,17 @@ pub async fn status(
     let uri = agent.create_status(form.status.clone()).await?.uri;
 
     let status = Status::new(uri, did, form.status.clone());
-    let status = status_db
+    let status_from_db = status_db
         .save_optimistic(&status)
         .await
         .context("saving status")?;
-    durable_object.broadcast(status).await?;
-
-    Ok(())
+    
+    // Broadcast to WebSocket clients
+    durable_object.broadcast(status_from_db.clone()).await?;
+    
+    // Convert to StatusWithHandle and return as JSON
+    let status_with_handle = StatusWithHandle::from(status_from_db);
+    Ok(Json(status_with_handle))
 }
 
 #[worker::send]
