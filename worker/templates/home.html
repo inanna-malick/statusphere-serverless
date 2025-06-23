@@ -226,7 +226,9 @@ function join() {
   });
 
   ws.addEventListener("message", event => {
+    console.log("websocket msg raw: " + JSON.stringify(event))
     let data = JSON.parse(event.data);
+    console.log("websocket msg data: " + JSON.stringify(data))
 
     if (data.error) {
       console.log("error from backend", data)

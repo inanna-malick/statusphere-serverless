@@ -84,7 +84,9 @@ pub async fn home(
                     .await;
                 statuses_with_handles.push(status);
             }
+            // enforce chronological ordering
             statuses_with_handles.sort_by_key(|s| s.created_at);
+            statuses_with_handles.reverse();
             statuses_with_handles
         }
         Err(e) => {

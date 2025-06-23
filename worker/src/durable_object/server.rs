@@ -172,7 +172,10 @@ impl DurableObject for MsgBroker {
         }
 
         if self.listener_mode() == ListenerMode::Scheduled {
-            self.state.storage().set_alarm(ALARM_INTERVAL_MS).await?;
+            self.state
+                .storage()
+                .set_alarm(Utc::now().timestamp_millis() + ALARM_INTERVAL_MS)
+                .await?;
         }
 
         worker::Response::empty()
@@ -230,10 +233,23 @@ impl MsgBroker {
                 "listener mode is scheduled, setting up alarm if it doesn't already exist"
             );
             match self.state.storage().get_alarm().await? {
-                Some(_preexisting) => {}
+                Some(preexisting) => {
+                    console_log!("preexisting alarm {}", preexisting);
+                    let now = Utc::now().timestamp_millis();
+                    if preexisting < now {
+                        console_log!("preexisting alarm is in the past {} < {}", preexisting, now);
+                        // self.state.storage().delete_alarm().await?;
+                        // self.state.storage().set_alarm(ALARM_INTERVAL_MS).await?;
+                        // console_log!("set alarm");
+                    }
+                }
                 None => {
-                    console_log!("no prexisting alarm");
-                    self.state.storage().set_alarm(ALARM_INTERVAL_MS).await?
+                    console_log!("no prexisting alarm, setting for {}", ALARM_INTERVAL_MS);
+                    self.state
+                        .storage()
+                        .set_alarm(Utc::now().timestamp_millis() + ALARM_INTERVAL_MS)
+                        .await?;
+                    console_log!("set alarm");
                 }
             }
         }
