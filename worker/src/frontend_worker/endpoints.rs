@@ -66,21 +66,27 @@ pub async fn login(
 #[worker::send]
 pub async fn home(
     State(AppState {
-        oauth, status_db, ..
+        oauth,
+        status_db,
+        did_resolver,
+        ..
     }): State<AppState>,
     session: tower_sessions::Session,
 ) -> Result<HomeTemplate, AppError> {
     // Fetch recent statuses for template seeding (no handle resolution for now)
     let recent_statuses = match status_db.load_latest_statuses(20).await {
-        Ok(statuses) => statuses
-            .into_iter()
-            .map(|s| {
+        Ok(statuses) => {
+            let mut statuses_with_handles = Vec::new();
+            for s in statuses.into_iter() {
                 let mut status = crate::types::status::StatusWithHandle::from(s);
-                // Leave handle as None for now - we'll resolve handles in a future enhancement
-                status.handle = None;
-                status
-            })
-            .collect(),
+                status.handle = did_resolver
+                    .resolve_handle_for_did(&status.author_did)
+                    .await;
+                statuses_with_handles.push(status);
+            }
+            statuses_with_handles.sort_by_key(|s| s.created_at);
+            statuses_with_handles
+        }
         Err(e) => {
             console_log!("Error loading recent statuses for seeding: {}", e);
             Vec::new()
@@ -153,6 +159,7 @@ pub async fn status(
         oauth,
         status_db,
         durable_object,
+        did_resolver,
     }): State<AppState>,
     session: Session,
     form: Json<StatusForm>,
@@ -181,7 +188,10 @@ pub async fn status(
     durable_object.broadcast(status_from_db.clone()).await?;
 
     // Convert to StatusWithHandle and return as JSON
-    let status_with_handle = StatusWithHandle::from(status_from_db);
+    let mut status_with_handle = StatusWithHandle::from(status_from_db);
+    status_with_handle.handle = did_resolver
+        .resolve_handle_for_did(&status_with_handle.author_did)
+        .await;
     Ok(Json(status_with_handle))
 }
 

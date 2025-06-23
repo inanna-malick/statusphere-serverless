@@ -6,10 +6,10 @@ use crate::types::status::Status;
 use crate::types::status::StatusFromDb;
 use crate::types::status::StatusWithHandle;
 use atrium_api::types::Collection as _;
-use atrium_common::resolver::Resolver;
 use atrium_oauth::DefaultHttpClient;
 use serde_json::json;
 use std::sync::Arc;
+use worker::console_debug;
 use worker::console_error;
 use worker::Method;
 use worker::{
@@ -61,10 +61,9 @@ impl DurableObject for MsgBroker {
         ws: WebSocket,
         message: WebSocketIncomingMessage,
     ) -> worker::Result<()> {
-        // TODO: getting more of these than makes sense
         match message {
             WebSocketIncomingMessage::String(s) if s == "ready" => {
-                console_log!("got ready message (deprecated - statuses now seeded in template)");
+                console_debug!("got ready message (deprecated - statuses now seeded in template)");
                 // No-op for backward compatibility
             }
             _ => {
@@ -181,26 +180,14 @@ impl DurableObject for MsgBroker {
 }
 
 impl MsgBroker {
-    async fn resolve_handle_for_did(&self, did: &Did) -> Option<String> {
-        match self.did_resolver.resolve(did).await {
-            Ok(did_doc) => {
-                // also known as list is in priority order so take first
-                did_doc
-                    .also_known_as
-                    .and_then(|akas| akas.first().map(|s| format!("@{}", s).replace("at://", "")))
-            }
-            Err(err) => {
-                console_log!("Error resolving did: {err}");
-                None
-            }
-        }
-    }
-
     #[worker::send]
     async fn broadcast(&mut self, status: StatusFromDb) -> worker::Result<()> {
         let mut status = StatusWithHandle::from(status);
 
-        status.handle = self.resolve_handle_for_did(&status.author_did).await;
+        status.handle = self
+            .did_resolver
+            .resolve_handle_for_did(&status.author_did)
+            .await;
 
         for ws in self.state.get_websockets() {
             if let Err(e) = ws.send(&status) {
@@ -218,6 +205,7 @@ impl MsgBroker {
         let current_connections = self.state.get_websockets().len();
         const MAX_WEBSOCKET_CONNECTIONS: usize = 500;
 
+        // TODO: kill old connections instead
         if current_connections >= MAX_WEBSOCKET_CONNECTIONS {
             console_log!(
                 "WebSocket connection limit reached ({}/{}), rejecting new connection for load shedding",
