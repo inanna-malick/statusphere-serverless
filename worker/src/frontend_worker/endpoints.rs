@@ -2,7 +2,10 @@ use crate::types::jetstream;
 use crate::types::lexicons::xyz;
 use crate::types::status::STATUS_OPTIONS;
 use crate::{types::errors::AppError, types::templates::HomeTemplate};
-use crate::{types::status::{Status, StatusWithHandle}, types::templates::Profile};
+use crate::{
+    types::status::{Status, StatusWithHandle},
+    types::templates::Profile,
+};
 use anyhow::Context as _;
 use atrium_api::types::string::Handle;
 use atrium_oauth::{CallbackParams, OAuthClientMetadata};
@@ -62,17 +65,22 @@ pub async fn login(
 /// Render the home page
 #[worker::send]
 pub async fn home(
-    State(AppState { oauth, status_db, .. }): State<AppState>,
+    State(AppState {
+        oauth, status_db, ..
+    }): State<AppState>,
     session: tower_sessions::Session,
 ) -> Result<HomeTemplate, AppError> {
     // Fetch recent statuses for template seeding (no handle resolution for now)
-    let recent_statuses = match status_db.load_recent_statuses_for_seeding(20).await {
-        Ok(statuses) => statuses.into_iter().map(|s| {
-            let mut status = crate::types::status::StatusWithHandle::from(s);
-            // Leave handle as None for now - we'll resolve handles in a future enhancement
-            status.handle = None;
-            status
-        }).collect(),
+    let recent_statuses = match status_db.load_latest_statuses(20).await {
+        Ok(statuses) => statuses
+            .into_iter()
+            .map(|s| {
+                let mut status = crate::types::status::StatusWithHandle::from(s);
+                // Leave handle as None for now - we'll resolve handles in a future enhancement
+                status.handle = None;
+                status
+            })
+            .collect(),
         Err(e) => {
             console_log!("Error loading recent statuses for seeding: {}", e);
             Vec::new()
@@ -168,10 +176,10 @@ pub async fn status(
         .save_optimistic(&status)
         .await
         .context("saving status")?;
-    
+
     // Broadcast to WebSocket clients
     durable_object.broadcast(status_from_db.clone()).await?;
-    
+
     // Convert to StatusWithHandle and return as JSON
     let status_with_handle = StatusWithHandle::from(status_from_db);
     Ok(Json(status_with_handle))
