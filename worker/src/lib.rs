@@ -1,3 +1,4 @@
+use atrium_oauth::DefaultHttpClient;
 // use crate::services::jetstream_listener;
 use axum::response::IntoResponse;
 use durable_object::client::MessageBroker;
@@ -9,6 +10,8 @@ use storage::{db::StatusDb, kv::KvStoreWrapper};
 use worker::{console_debug, event, Context, Env, HttpRequest};
 
 use tower::Service as _;
+
+use crate::services::resolvers;
 
 mod durable_object;
 mod frontend_worker;
@@ -52,12 +55,14 @@ async fn fetch(
     let ns = env.durable_object("MSGBROKER")?;
     let durable_object = MessageBroker::from_namespace(&ns)?;
 
+    let did_resolver = resolvers::did_resolver(&Arc::new(DefaultHttpClient::default()), &kv);
     let session_store = KvStoreWrapper::new(kv, "tower:session", SESSION_STORE_TTL);
 
     let state = AppState {
         oauth: client,
         status_db,
         durable_object,
+        did_resolver: Arc::new(did_resolver),
     };
 
     Ok(router(state, session_store).call(req).await?)

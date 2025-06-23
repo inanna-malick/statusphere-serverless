@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::durable_object::client::MessageBroker;
 use crate::services::oauth::OAuthClient;
 use crate::services::resolvers::DidResolver;
@@ -8,5 +10,5 @@ pub struct AppState {
     pub oauth: OAuthClient,
     pub status_db: StatusDb,
     pub durable_object: MessageBroker,
-    pub did_resolver: DidResolver,
+    pub did_resolver: Arc<DidResolver>,
 }
