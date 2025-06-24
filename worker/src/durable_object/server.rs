@@ -34,7 +34,7 @@ const MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS: usize = 15;
 pub struct MsgBroker {
     state: State,
     env: Env,
-    status_db: StatusDb,
+    // status_db: StatusDb,
     did_resolver: resolvers::DidResolver,
     alarms_without_active_websockets: usize,
 }
@@ -50,7 +50,6 @@ impl DurableObject for MsgBroker {
         Self {
             env,
             state,
-            status_db,
             did_resolver,
             alarms_without_active_websockets: 0,
         }
@@ -93,92 +92,10 @@ impl DurableObject for MsgBroker {
                     return worker::Response::empty();
                 }
             }
-            "/broadcast_jetstream_event" => {
-                if req.method() == Method::Post {
-                    let status = req.json().await?;
-                    self.handle_jetstream_event(&status).await.map_err(|e| {
-                        worker::Error::RustError(format!("some error on ingest: {}", e))
-                    })?;
-                    return worker::Response::empty();
-                }
-            }
             _ => {}
         }
 
         worker::Response::error("unsupported method/endpoint", 400)
-    }
-
-    async fn alarm(&mut self) -> worker::Result<worker::Response> {
-        console_log!("alarm wakeup");
-
-        let cursor = match self.state.storage().get::<u64>("last_seen").await {
-            Ok(cursor) => cursor,
-            Err(_) => {
-                console_log!("establish initial cursor");
-                // assume all errors signify no value exists for this key,
-                // and start with an initial cursor of one alarm interval ago
-
-                let now = Utc::now().timestamp_micros();
-                let cursor = now - ALARM_INTERVAL_MS;
-                cursor
-                    .try_into()
-                    .expect("cursor timestamp should not be negative")
-            }
-        };
-
-        console_log!("cursor: {cursor}");
-
-        let last_seen = self
-            .ingest(cursor)
-            .await
-            .map_err(|e| worker::Error::RustError(format!("some error on ingest: {}", e)))?;
-
-        console_log!("done ingesting, last seen: {last_seen:?}");
-
-        match last_seen {
-            Some(last_seen) => {
-                self.state.storage().put("last_seen", last_seen).await?;
-            }
-            None => {
-                console_log!("no events observed (including account/identity events). weird, but not necessarily an error")
-            }
-        }
-
-        if self.state.get_websockets().is_empty() {
-            self.alarms_without_active_websockets += 1;
-            console_log!(
-                "triggered alarm with no active websockets, incrementing counter: {}",
-                self.alarms_without_active_websockets
-            );
-        } else {
-            console_log!(
-                "triggered alarm with {} active websockets, resetting counter to 0 from {}",
-                self.state.get_websockets().len(),
-                self.alarms_without_active_websockets
-            );
-            self.alarms_without_active_websockets = 0;
-        }
-
-        // TTL: stop alarm if no active websockets for greater than N alarm cycles,
-        //      this worker is no longer active and can be killed to save resources
-        if self.alarms_without_active_websockets > MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS {
-            console_log!(
-                "reached max alarms without active websockets ({}), terminating alarm",
-                MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS
-            );
-            self.state.storage().delete_alarm().await?;
-            self.state.storage().delete_all().await?;
-            return worker::Response::empty();
-        }
-
-        if self.listener_mode() == ListenerMode::Scheduled {
-            self.state
-                .storage()
-                .set_alarm(Utc::now().timestamp_millis() + ALARM_INTERVAL_MS)
-                .await?;
-        }
-
-        worker::Response::empty()
     }
 }
 
@@ -206,7 +123,7 @@ impl MsgBroker {
 
         // Check current WebSocket connection count for load shedding
         let current_connections = self.state.get_websockets().len();
-        const MAX_WEBSOCKET_CONNECTIONS: usize = 500;
+        const MAX_WEBSOCKET_CONNECTIONS: usize = 1000;
 
         // TODO: kill old connections instead
         if current_connections >= MAX_WEBSOCKET_CONNECTIONS {
@@ -228,154 +145,6 @@ impl MsgBroker {
         let ws = WebSocketPair::new()?;
         self.state.accept_web_socket(&ws.server);
 
-        if self.listener_mode() == ListenerMode::Scheduled {
-            console_log!(
-                "listener mode is scheduled, setting up alarm if it doesn't already exist"
-            );
-            match self.state.storage().get_alarm().await? {
-                Some(preexisting) => {
-                    console_log!("preexisting alarm {}", preexisting);
-                    let now = Utc::now().timestamp_millis();
-                    if preexisting < now {
-                        console_log!("preexisting alarm is in the past {} < {}", preexisting, now);
-                        // self.state.storage().delete_alarm().await?;
-                        // self.state.storage().set_alarm(ALARM_INTERVAL_MS).await?;
-                        // console_log!("set alarm");
-                    }
-                }
-                None => {
-                    console_log!("no prexisting alarm, setting for {}", ALARM_INTERVAL_MS);
-                    self.state
-                        .storage()
-                        .set_alarm(Utc::now().timestamp_millis() + ALARM_INTERVAL_MS)
-                        .await?;
-                    console_log!("set alarm");
-                }
-            }
-        }
-
         worker::Response::from_websocket(ws.client)
     }
-
-    async fn ingest(&mut self, cursor: TimestampMicros) -> anyhow::Result<Option<TimestampMicros>> {
-        let mut last_seen = None;
-
-        let start_time = Utc::now();
-
-        let start_time_us: u64 = start_time
-            .timestamp_micros()
-            .try_into()
-            .expect("start time before 1970? idk");
-
-        let jetstream_url = format!(
-            "wss://jetstream1.us-east.bsky.network/subscribe?wantedCollections={}&cursor={}",
-            xyz::statusphere::Status::NSID,
-            cursor
-        );
-
-        console_log!("connecting to jetstream with url {}", jetstream_url);
-
-        let ws = WebSocket::connect(jetstream_url.parse()?).await?;
-
-        let mut event_stream = ws.events()?;
-        ws.accept()?;
-
-        while let Some(event) = event_stream.next().await {
-            let event = event?;
-
-            match event {
-                WebsocketEvent::Message(message_event) => {
-                    let message: Event<xyz::statusphere::status::RecordData> =
-                        message_event.json()?;
-
-                    self.handle_jetstream_event(&message).await?;
-
-                    last_seen = message.time_us;
-
-                    if message.time_us.is_some_and(|s| s > start_time_us) {
-                        console_log!("reached start time, terminate stream");
-                        ws.close(None, Some("done"))?;
-                        break;
-                    }
-                }
-                WebsocketEvent::Close(_close_event) => break,
-            }
-        }
-
-        Ok(last_seen)
-    }
-
-    pub async fn handle_jetstream_event(
-        &mut self,
-        event: &Event<xyz::statusphere::status::RecordData>,
-    ) -> Result<(), AppError> {
-        if let Some(commit) = &event.commit {
-            console_log!("commit event: {:?}", &event);
-
-            //We manually construct the uri since Jetstream does not provide it
-            //at://{users did}/{collection: xyz.statusphere.status}{records key}
-            let record_uri = format!("at://{}/{}/{}", event.did, commit.collection, commit.rkey);
-            match commit.operation {
-                Operation::Create | Operation::Update => {
-                    if let Some(record) = &commit.record {
-                        if let Some(ref _cid) = commit.cid {
-                            let created = record.created_at.as_ref();
-                            let right_now = chrono::Utc::now();
-
-                            let status = Status {
-                                uri: record_uri,
-                                author_did: Did::new(event.did.clone())
-                                    .map_err(|s| anyhow!("invalid did from jetstream: {s}"))?,
-                                status: record.status.clone(),
-                                created_at: created.to_utc(),
-                                indexed_at: right_now,
-                            };
-
-                            let updated = self
-                                .status_db
-                                .save_or_update_from_jetstream(&status)
-                                .await?;
-
-                            self.broadcast(updated).await?;
-                        }
-                    }
-                }
-                Operation::Delete => {
-                    // TODO: could broadcast this to the frontend as an update
-                    self.status_db.delete_by_uri(&record_uri).await?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn listener_mode(&self) -> ListenerMode {
-        match self.env.var("SCHEDULED_ALARM") {
-            Ok(v) => {
-                console_log!("listener mode: {}", v);
-                let s = v.to_string();
-                if s == "true" {
-                    ListenerMode::Scheduled
-                } else {
-                    ListenerMode::LivePush
-                }
-            }
-            Err(e) => {
-                console_error!(
-                    "SCHEDULED_ALARM env mapping not set ({}), defaulting to live push",
-                    e
-                );
-                ListenerMode::LivePush
-            }
-        }
-    }
 }
-
-#[derive(PartialEq, Eq)]
-enum ListenerMode {
-    Scheduled,
-    LivePush,
-}
-
-type TimestampMicros = u64;

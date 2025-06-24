@@ -7,11 +7,11 @@ use services::oauth::OAuthClient;
 use std::sync::Arc;
 use std::time::Duration;
 use storage::{db::StatusDb, kv::KvStoreWrapper};
-use worker::{console_debug, event, Context, Env, HttpRequest};
+use worker::{console_debug, event, Context, Env, HttpRequest, ScheduleContext, ScheduledEvent};
 
 use tower::Service as _;
 
-use crate::services::resolvers;
+use crate::services::{jetstream, resolvers};
 
 mod durable_object;
 mod frontend_worker;
@@ -21,7 +21,7 @@ mod types;
 
 const SESSION_STORE_TTL: Duration = Duration::new(60 * 60 * 24 * 30, 0);
 
-#[event(fetch)]
+#[event(fetch, respond_with_errors)]
 async fn fetch(
     req: HttpRequest,
     env: Env,
@@ -66,4 +66,10 @@ async fn fetch(
     };
 
     Ok(router(state, session_store).call(req).await?)
+}
+
+// IMPL ttl by checking last time app used or w/e
+#[event(scheduled, respond_with_errors)]
+async fn scheduled(s: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    // jetstream::alarm().await...
 }
