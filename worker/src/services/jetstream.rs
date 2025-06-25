@@ -1,4 +1,6 @@
+use crate::durable_object::client::MessageBroker;
 use crate::frontend_worker::state::AppState;
+use crate::frontend_worker::state::ScheduledEventState;
 use crate::services::resolvers;
 use crate::services::resolvers::did_resolver;
 use crate::storage::db::StatusDb;
@@ -38,7 +40,7 @@ struct Cursor {
     last_seen: u64,
 }
 
-async fn ingest_(env: Env, state: &AppState) -> anyhow::Result<()> {
+pub async fn ingest_(env: Env) -> anyhow::Result<()> {
     // TODO: use kv, TTL it w/ short TTL, if none present just use now - offset
     // let cursor = match self.state.storage().get::<u64>("last_seen").await {
     //     Ok(cursor) => cursor,
@@ -54,6 +56,19 @@ async fn ingest_(env: Env, state: &AppState) -> anyhow::Result<()> {
     //             .expect("cursor timestamp should not be negative")
     //     }
     // };
+
+    let kv = Arc::new(env.kv("KV")?);
+    let status_db = StatusDb::from_env(&env)?;
+
+    let ns = env.durable_object("MSGBROKER")?;
+    let durable_object = MessageBroker::from_namespace(&ns)?;
+
+    let state = ScheduledEventState {
+        status_db,
+        durable_object,
+        // TODO: do did resolution here? instead of durable object? idk
+    };
+
     let kv = Arc::new(env.kv("KV")?);
 
     const LAST_SEEN_KEY: &str = "singleton::last_seen::timestamp";
@@ -78,7 +93,7 @@ async fn ingest_(env: Env, state: &AppState) -> anyhow::Result<()> {
         }
     };
 
-    let last_seen = ingest(state, cursor)
+    let last_seen = ingest(&state, cursor)
         .await
         .map_err(|e| worker::Error::RustError(format!("some error on ingest: {}", e)))?;
 
@@ -86,11 +101,9 @@ async fn ingest_(env: Env, state: &AppState) -> anyhow::Result<()> {
 
     match last_seen {
         Some(last_seen) => {
-            kv.put(LAST_SEEN_KEY, Cursor { last_seen })
-                .map_err(|e| anyhow!("kv: {}", e))?
+            kv.put(LAST_SEEN_KEY, Cursor { last_seen }).map_err(|e| anyhow!("kv: {}", e))?
                 .execute()
-                .await
-                .map_err(|e| anyhow!("kv: {}", e))?;
+                .await.map_err(|e| anyhow!("kv: {}", e))?;
         }
         None => {
             console_log!("no events observed (including account/identity events). weird, but not necessarily an error")
@@ -100,53 +113,8 @@ async fn ingest_(env: Env, state: &AppState) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn handle_jetstream_event(
-    state: &AppState,
-    event: &Event<xyz::statusphere::status::RecordData>,
-) -> anyhow::Result<()> {
-    if let Some(commit) = &event.commit {
-        console_log!("commit event: {:?}", &event);
-
-        //We manually construct the uri since Jetstream does not provide it
-        //at://{users did}/{collection: xyz.statusphere.status}{records key}
-        let record_uri = format!("at://{}/{}/{}", event.did, commit.collection, commit.rkey);
-        match commit.operation {
-            Operation::Create | Operation::Update => {
-                if let Some(record) = &commit.record {
-                    if let Some(ref _cid) = commit.cid {
-                        let created = record.created_at.as_ref();
-                        let right_now = chrono::Utc::now();
-
-                        let status = Status {
-                            uri: record_uri,
-                            author_did: Did::new(event.did.clone())
-                                .map_err(|s| anyhow!("invalid did from jetstream: {s}"))?,
-                            status: record.status.clone(),
-                            created_at: created.to_utc(),
-                            indexed_at: right_now,
-                        };
-
-                        let updated = state
-                            .status_db
-                            .save_or_update_from_jetstream(&status)
-                            .await?;
-
-                        state.durable_object.broadcast(updated).await?;
-                    }
-                }
-            }
-            Operation::Delete => {
-                // TODO: could broadcast this to the frontend as an update
-                state.status_db.delete_by_uri(&record_uri).await?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
 pub async fn ingest(
-    state: &AppState,
+    state: &ScheduledEventState,
     cursor: TimestampMicros,
 ) -> anyhow::Result<Option<TimestampMicros>> {
     let mut last_seen = None;
@@ -195,4 +163,53 @@ pub async fn ingest(
     Ok(last_seen)
 }
 
+
+pub async fn handle_jetstream_event(
+    state: &ScheduledEventState,
+    event: &Event<xyz::statusphere::status::RecordData>,
+) -> anyhow::Result<()> {
+    if let Some(commit) = &event.commit {
+        console_log!("commit event: {:?}", &event);
+
+        //We manually construct the uri since Jetstream does not provide it
+        //at://{users did}/{collection: xyz.statusphere.status}{records key}
+        let record_uri = format!("at://{}/{}/{}", event.did, commit.collection, commit.rkey);
+        match commit.operation {
+            Operation::Create | Operation::Update => {
+                if let Some(record) = &commit.record {
+                    if let Some(ref _cid) = commit.cid {
+                        let created = record.created_at.as_ref();
+                        let right_now = chrono::Utc::now();
+
+                        let status = Status {
+                            uri: record_uri,
+                            author_did: Did::new(event.did.clone())
+                                .map_err(|s| anyhow!("invalid did from jetstream: {s}"))?,
+                            status: record.status.clone(),
+                            created_at: created.to_utc(),
+                            indexed_at: right_now,
+                        };
+
+                        let updated = state
+                            .status_db
+                            .save_or_update_from_jetstream(&status)
+                            .await?;
+
+                        state.durable_object.broadcast(updated).await?;
+                    }
+                }
+            }
+            Operation::Delete => {
+                // TODO: could broadcast this to the frontend as an update
+                state.status_db.delete_by_uri(&record_uri).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+
+
 type TimestampMicros = u64;
+

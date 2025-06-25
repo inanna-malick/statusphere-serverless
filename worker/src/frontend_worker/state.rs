@@ -12,3 +12,10 @@ pub struct AppState {
     pub durable_object: MessageBroker,
     pub did_resolver: Arc<DidResolver>,
 }
+
+
+#[derive(Clone)]
+pub struct ScheduledEventState {
+    pub status_db: StatusDb,
+    pub durable_object: MessageBroker,
+}

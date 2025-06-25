@@ -7,11 +7,11 @@ use services::oauth::OAuthClient;
 use std::sync::Arc;
 use std::time::Duration;
 use storage::{db::StatusDb, kv::KvStoreWrapper};
-use worker::{console_debug, event, Context, Env, HttpRequest, ScheduleContext, ScheduledEvent};
+use worker::{console_debug, console_error, console_log, event, Context, Env, HttpRequest, ScheduleContext, ScheduledEvent};
 
 use tower::Service as _;
 
-use crate::services::{jetstream, resolvers};
+use crate::{frontend_worker::state::ScheduledEventState, services::{jetstream::ingest_, resolvers}};
 
 mod durable_object;
 mod frontend_worker;
@@ -71,5 +71,13 @@ async fn fetch(
 // IMPL ttl by checking last time app used or w/e
 #[event(scheduled, respond_with_errors)]
 async fn scheduled(s: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    console_error_panic_hook::set_once();
+
+
+    match ingest_(env).await {
+        Ok(_) => console_log!("done with scheduled jetstream reader"),
+        Err(e) => console_error!("error on scheduled jetstream reader, {}", e),
+    }
+
     // jetstream::alarm().await...
 }

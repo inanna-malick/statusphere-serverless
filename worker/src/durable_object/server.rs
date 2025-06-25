@@ -1,29 +1,19 @@
 use crate::services::resolvers;
 use crate::services::resolvers::did_resolver;
 use crate::storage::db::StatusDb;
-use crate::types::errors::AppError;
-use crate::types::status::Status;
 use crate::types::status::StatusFromDb;
 use crate::types::status::StatusWithHandle;
-use atrium_api::types::Collection as _;
 use atrium_oauth::DefaultHttpClient;
 use serde_json::json;
 use std::sync::Arc;
 use worker::console_debug;
-use worker::console_error;
 use worker::Method;
 use worker::{
     console_log, durable_object, wasm_bindgen, wasm_bindgen_futures, Env, State, WebSocket,
     WebSocketIncomingMessage, WebSocketPair,
 };
 
-use worker::WebsocketEvent;
 
-use crate::types::jetstream::{Event, Operation};
-use crate::types::lexicons::xyz;
-use anyhow::anyhow;
-use atrium_api::types::string::Did;
-use chrono::Utc;
 use futures::StreamExt as _;
 
 // read from jetstream once per minute
