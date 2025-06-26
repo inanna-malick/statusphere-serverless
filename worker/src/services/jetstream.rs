@@ -148,7 +148,9 @@ pub async fn ingest(
 
                 handle_jetstream_event(&state, &message).await?;
 
-                last_seen = message.time_us;
+                if let Some(time_us) = message.time_us {
+                    last_seen = time_us;
+                }
 
                 if message.time_us.is_some_and(|s| s > start_time_us) {
                     console_log!("reached start time, terminate stream");
