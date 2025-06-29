@@ -1,28 +1,9 @@
 use crate::durable_object::client::MessageBroker;
-use crate::frontend_worker::state::AppState;
 use crate::frontend_worker::state::ScheduledEventState;
-use crate::services::resolvers;
-use crate::services::resolvers::did_resolver;
 use crate::storage::db::StatusDb;
-use crate::types::errors::AppError;
 use crate::types::status::Status;
-use crate::types::status::StatusFromDb;
-use crate::types::status::StatusWithHandle;
-use anyhow::Context;
 use atrium_api::types::Collection as _;
-use atrium_oauth::DefaultHttpClient;
-use chrono::Date;
-use serde::Deserialize;
-use serde::Serialize;
-use serde_json::json;
-use std::sync::Arc;
-use worker::console_debug;
-use worker::console_error;
-use worker::Method;
-use worker::{
-    console_log, durable_object, wasm_bindgen, wasm_bindgen_futures, Env, State, WebSocket,
-    WebSocketIncomingMessage, WebSocketPair,
-};
+use worker::{console_error, console_log, Env, WebSocket};
 
 use worker::WebsocketEvent;
 
@@ -33,63 +14,51 @@ use atrium_api::types::string::Did;
 use chrono::Utc;
 use futures::StreamExt as _;
 
-const ALARM_INTERVAL_MS: i64 = 60 * 1000;
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct Cursor {
-    last_seen: u64,
-}
+const ALARM_INTERVAL_MS: i64 = 5 * 60 * 1000; // 5 minutes
+const ALARM_INTERVAL_MICROS: i64 = ALARM_INTERVAL_MS * 1000;
 
 pub async fn ingest_(env: Env) -> anyhow::Result<()> {
-    // TODO: use kv, TTL it w/ short TTL, if none present just use now - offset
-    // let cursor = match self.state.storage().get::<u64>("last_seen").await {
-    //     Ok(cursor) => cursor,
-    //     Err(_) => {
-    //         console_log!("establish initial cursor");
-    //         // assume all errors signify no value exists for this key,
-    //         // and start with an initial cursor of one alarm interval ago
 
-    //         let now = Utc::now().timestamp_micros();
-    //         let cursor = now - ALARM_INTERVAL_MS;
-    //         cursor
-    //             .try_into()
-    //             .expect("cursor timestamp should not be negative")
-    //     }
-    // };
-
-    let kv = Arc::new(env.kv("KV")?);
     let status_db = StatusDb::from_env(&env)?;
 
     let ns = env.durable_object("MSGBROKER")?;
     let durable_object = MessageBroker::from_namespace(&ns)?;
 
     let state = ScheduledEventState {
-        status_db,
+        status_db: status_db.clone(),
         durable_object,
         // TODO: do did resolution here? instead of durable object? idk
     };
 
-    let kv = Arc::new(env.kv("KV")?);
-
-    const LAST_SEEN_KEY: &str = "singleton::last_seen::timestamp";
-
-    let cursor = match kv.get(LAST_SEEN_KEY).json().await {
-        Ok(Some(Cursor { last_seen })) => last_seen,
-        Ok(None) => {
+    let cursor = match status_db.get_jetstream_cursor().await {
+        Ok(Some(last_seen)) if last_seen > 0 => last_seen,
+        Ok(_) => {
+            console_log!("no valid cursor found in database, inserting default");
             let now = Utc::now().timestamp_micros();
-            let cursor = now - ALARM_INTERVAL_MS;
-            cursor
+            let default_cursor: u64 = (now - ALARM_INTERVAL_MICROS)
                 .try_into()
-                .expect("cursor timestamp should not be negative")
+                .expect("cursor timestamp should not be negative");
+            
+            // Insert the default cursor
+            if let Err(e) = status_db.insert_jetstream_cursor(default_cursor).await {
+                console_error!("failed to insert default cursor: {}", e);
+            }
+            
+            default_cursor
         }
         Err(e) => {
-            console_error!("error loading last seen key from KV. {}", e);
-
+            console_error!("error loading cursor from database: {}", e);
             let now = Utc::now().timestamp_micros();
-            let cursor = now - ALARM_INTERVAL_MS;
-            cursor
+            let default_cursor: u64 = (now - ALARM_INTERVAL_MICROS)
                 .try_into()
-                .expect("cursor timestamp should not be negative")
+                .expect("cursor timestamp should not be negative");
+            
+            // Try to insert the default cursor
+            if let Err(e) = status_db.insert_jetstream_cursor(default_cursor).await {
+                console_error!("failed to insert default cursor: {}", e);
+            }
+            
+            default_cursor
         }
     };
 
@@ -101,9 +70,10 @@ pub async fn ingest_(env: Env) -> anyhow::Result<()> {
 
     match last_seen {
         Some(last_seen) => {
-            kv.put(LAST_SEEN_KEY, Cursor { last_seen }).map_err(|e| anyhow!("kv: {}", e))?
-                .execute()
-                .await.map_err(|e| anyhow!("kv: {}", e))?;
+            status_db.update_jetstream_cursor(last_seen)
+                .await
+                .map_err(|e| anyhow!("failed to update cursor in database: {}", e))?;
+            console_log!("updated cursor in database to: {}", last_seen);
         }
         None => {
             console_log!("no events observed (including account/identity events). weird, but not necessarily an error")
@@ -149,7 +119,7 @@ pub async fn ingest(
                 handle_jetstream_event(&state, &message).await?;
 
                 if let Some(time_us) = message.time_us {
-                    last_seen = time_us;
+                    last_seen = Some(time_us);
                 }
 
                 if message.time_us.is_some_and(|s| s > start_time_us) {
