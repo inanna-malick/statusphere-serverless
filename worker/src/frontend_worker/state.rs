@@ -13,7 +13,6 @@ pub struct AppState {
     pub did_resolver: Arc<DidResolver>,
 }
 
-
 #[derive(Clone)]
 pub struct ScheduledEventState {
     pub status_db: StatusDb,

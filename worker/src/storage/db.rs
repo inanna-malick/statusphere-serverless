@@ -1,6 +1,6 @@
 use crate::types::status::{Status, StatusFromDb};
 use std::sync::Arc;
-use worker::{console_log, query, D1Database, Result};
+use worker::{console_debug, query, D1Database, Result};
 
 #[derive(Clone)]
 pub struct StatusDb(Arc<D1Database>);
@@ -36,7 +36,7 @@ impl StatusDb {
 
     /// Saves or updates a status by its did(uri), returning the created/updated row
     pub async fn save_or_update_from_jetstream(&self, status: &Status) -> Result<StatusFromDb> {
-        console_log!("save or update from jetstream: {:?}", &status);
+        console_debug!("save or update from jetstream: {:?}", &status);
         let res = query!(&self.0, r#"INSERT INTO status (uri, authorDid, status, createdAt, indexedAt, seenOnJetstream, createdViaThisApp) VALUES (?1, ?2, ?3, ?4, ?5, TRUE, FALSE)
                       ON CONFLICT (uri)
                       DO UPDATE
@@ -59,7 +59,7 @@ impl StatusDb {
         // insert or update should _always_ return one row
         let res = res.ok_or(worker::Error::Infallible)?;
 
-        console_log!("save or update from jetstream done: {:?}", &res);
+        console_debug!("save or update from jetstream done: {:?}", &res);
 
         Ok(res)
     }
@@ -87,12 +87,9 @@ impl StatusDb {
 
     /// Gets the last seen jetstream cursor timestamp
     pub async fn get_jetstream_cursor(&self) -> Result<Option<u64>> {
-        let result = query!(
-            &self.0,
-            "SELECT last_seen_timestamp FROM jetstream_cursor"
-        )
-        .first::<u64>(Some("last_seen_timestamp"))
-        .await?;
+        let result = query!(&self.0, "SELECT last_seen_timestamp FROM jetstream_cursor")
+            .first::<u64>(Some("last_seen_timestamp"))
+            .await?;
 
         Ok(result)
     }
@@ -109,7 +106,7 @@ impl StatusDb {
 
         Ok(())
     }
-    
+
     /// Inserts the initial jetstream cursor timestamp
     pub async fn insert_jetstream_cursor(&self, timestamp: u64) -> Result<()> {
         query!(

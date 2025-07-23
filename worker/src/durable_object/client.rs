@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use crate::types::errors::AppError;
-use crate::types::jetstream;
-use crate::types::lexicons::xyz;
 use crate::types::status::StatusFromDb;
 use anyhow::{anyhow, Context as _};
 use http::Request;
@@ -43,28 +41,6 @@ impl MessageBroker {
         let req = Request::builder()
             .method("POST")
             .uri("https://stub.com/broadcast_status")
-            .header("Content-Type", "application/json")
-            .body(serde_json::to_string(&status).context("convert to json")?)
-            .context("building request")?;
-
-        let req = request_to_wasm(req).context("building req")?;
-
-        // send update to message broker
-        self.msg_broker
-            .fetch_with_request(req.into())
-            .await
-            .map_err(|e| anyhow!("fetch with request {e:?}"))?;
-
-        Ok(())
-    }
-
-    pub async fn broadcast_jetstream_event(
-        &self,
-        status: jetstream::Event<xyz::statusphere::status::RecordData>,
-    ) -> anyhow::Result<()> {
-        let req = Request::builder()
-            .method("POST")
-            .uri("https://stub.com/broadcast_jetstream_event")
             .header("Content-Type", "application/json")
             .body(serde_json::to_string(&status).context("convert to json")?)
             .context("building request")?;

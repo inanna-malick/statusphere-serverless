@@ -1,6 +1,5 @@
 use crate::services::resolvers;
 use crate::services::resolvers::did_resolver;
-use crate::storage::db::StatusDb;
 use crate::types::status::StatusFromDb;
 use crate::types::status::StatusWithHandle;
 use atrium_oauth::DefaultHttpClient;
@@ -13,35 +12,22 @@ use worker::{
     WebSocketIncomingMessage, WebSocketPair,
 };
 
-
-use futures::StreamExt as _;
-
-// read from jetstream once per minute
-const ALARM_INTERVAL_MS: i64 = 60 * 1000;
-const MAX_ALARMS_WITHOUT_ACTIVE_WEBSOCKETS: usize = 15;
-
 #[durable_object]
 pub struct MsgBroker {
     state: State,
-    env: Env,
-    // status_db: StatusDb,
     did_resolver: resolvers::DidResolver,
-    alarms_without_active_websockets: usize,
 }
 
 #[durable_object]
 impl DurableObject for MsgBroker {
     fn new(state: State, env: Env) -> Self {
         let kv = Arc::new(env.kv("KV").expect("invalid KV binding"));
-        let status_db = StatusDb::from_env(&env).expect("invalid D1 DB binding");
 
         let did_resolver = did_resolver(&Arc::new(DefaultHttpClient::default()), &kv);
 
         Self {
-            env,
             state,
             did_resolver,
-            alarms_without_active_websockets: 0,
         }
     }
 
@@ -115,7 +101,6 @@ impl MsgBroker {
         let current_connections = self.state.get_websockets().len();
         const MAX_WEBSOCKET_CONNECTIONS: usize = 1000;
 
-        // TODO: kill old connections instead
         if current_connections >= MAX_WEBSOCKET_CONNECTIONS {
             console_log!(
                 "WebSocket connection limit reached ({}/{}), rejecting new connection for load shedding",

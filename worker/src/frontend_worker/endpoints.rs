@@ -1,3 +1,5 @@
+use crate::frontend_worker::state::ScheduledEventState;
+use crate::services::jetstream::handle_jetstream_event;
 use crate::types::jetstream;
 use crate::types::lexicons::xyz;
 use crate::types::status::STATUS_OPTIONS;
@@ -207,18 +209,30 @@ pub async fn websocket(
 
 #[worker::send]
 pub async fn admin_publish_jetstream_event(
-    State(AppState { durable_object, .. }): State<AppState>,
+    State(AppState {
+        durable_object,
+        status_db,
+        ..
+    }): State<AppState>,
     // deliberately only implementing basic authorization because it's not the
     // focus of this post - do not use this in production apps
     TypedHeader(auth): TypedHeader<Authorization<headers::authorization::Basic>>,
     Json(status): Json<jetstream::Event<xyz::statusphere::status::RecordData>>,
 ) -> Result<(), AppError> {
+    // TODO: re-deploy with this disabled in some manner
     // DO NOT USE THIS IN PRODUCTION
     if auth.username() != "admin" && auth.password() != "hunter2" {
         return Err(AppError::NoAdminAuth);
     }
 
-    durable_object.broadcast_jetstream_event(status).await?;
+    handle_jetstream_event(
+        &ScheduledEventState {
+            status_db,
+            durable_object,
+        },
+        &status,
+    )
+    .await?;
 
     Ok(())
 }

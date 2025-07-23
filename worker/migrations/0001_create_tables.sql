@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS status (
 uri TEXT PRIMARY KEY,
 authorDid TEXT NOT NULL,
 status TEXT NOT NULL,
-source TEXT NOT NULL, -- todo: two separate flags, remove complex update logic
+source TEXT NOT NULL,
 createdAt INTEGER  NOT NULL,
 indexedAt INTEGER  NOT NULL
 );

@@ -1,7 +1,0 @@
-fuck it! move jetstream off distributed object entirely, decenter them, this is no longer a DO post
-
-cron jobs == no TTL but whatever - just make the default setting like once per 10m instead of 1m
-
-political move: drop auto-deploy button mb, so that there aren't a billion zombie instances of this hammering jetstream, or figure out some kind of ttl
-
-... or just //REMOVE ME BEFORE PROD and it just has a line of code that no-ops the jetstream listen if there hasn't been a homepage open event in the last 3 days

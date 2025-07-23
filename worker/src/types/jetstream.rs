@@ -1,7 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 // COPIED FROM ROCKETMAN https://github.com/espeon/cadet/blob/main/rocketman/src/types/event.rs
-// TODO: attribute in readme
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

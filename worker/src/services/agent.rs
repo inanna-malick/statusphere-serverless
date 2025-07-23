@@ -1,5 +1,3 @@
-// TODO (w/keyboard) move all agent code here
-
 use super::oauth;
 
 use crate::types::errors::AppError;

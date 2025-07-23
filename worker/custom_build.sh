@@ -1,4 +1,5 @@
 #!/bin/bash
+# NOTE: this exists only so cloudflare build (via the build pipeline integration) works
 set -e
 
 # check if cargo is installed

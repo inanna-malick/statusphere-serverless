@@ -18,7 +18,6 @@ const ALARM_INTERVAL_MS: i64 = 5 * 60 * 1000; // 5 minutes
 const ALARM_INTERVAL_MICROS: i64 = ALARM_INTERVAL_MS * 1000;
 
 pub async fn ingest_(env: Env) -> anyhow::Result<()> {
-
     let status_db = StatusDb::from_env(&env)?;
 
     let ns = env.durable_object("MSGBROKER")?;
@@ -27,7 +26,6 @@ pub async fn ingest_(env: Env) -> anyhow::Result<()> {
     let state = ScheduledEventState {
         status_db: status_db.clone(),
         durable_object,
-        // TODO: do did resolution here? instead of durable object? idk
     };
 
     let cursor = match status_db.get_jetstream_cursor().await {
@@ -38,12 +36,12 @@ pub async fn ingest_(env: Env) -> anyhow::Result<()> {
             let default_cursor: u64 = (now - ALARM_INTERVAL_MICROS)
                 .try_into()
                 .expect("cursor timestamp should not be negative");
-            
+
             // Insert the default cursor
             if let Err(e) = status_db.insert_jetstream_cursor(default_cursor).await {
                 console_error!("failed to insert default cursor: {}", e);
             }
-            
+
             default_cursor
         }
         Err(e) => {
@@ -52,12 +50,12 @@ pub async fn ingest_(env: Env) -> anyhow::Result<()> {
             let default_cursor: u64 = (now - ALARM_INTERVAL_MICROS)
                 .try_into()
                 .expect("cursor timestamp should not be negative");
-            
+
             // Try to insert the default cursor
             if let Err(e) = status_db.insert_jetstream_cursor(default_cursor).await {
                 console_error!("failed to insert default cursor: {}", e);
             }
-            
+
             default_cursor
         }
     };
@@ -70,7 +68,8 @@ pub async fn ingest_(env: Env) -> anyhow::Result<()> {
 
     match last_seen {
         Some(last_seen) => {
-            status_db.update_jetstream_cursor(last_seen)
+            status_db
+                .update_jetstream_cursor(last_seen)
                 .await
                 .map_err(|e| anyhow!("failed to update cursor in database: {}", e))?;
             console_log!("updated cursor in database to: {}", last_seen);
@@ -135,7 +134,6 @@ pub async fn ingest(
     Ok(last_seen)
 }
 
-
 pub async fn handle_jetstream_event(
     state: &ScheduledEventState,
     event: &Event<xyz::statusphere::status::RecordData>,
@@ -181,7 +179,4 @@ pub async fn handle_jetstream_event(
     Ok(())
 }
 
-
-
 type TimestampMicros = u64;
-
