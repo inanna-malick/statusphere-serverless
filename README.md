@@ -8,7 +8,11 @@ Statusphere is a minimal social media app that demonstrates how to build ATProto
 
 This implementation runs entirely on Cloudflare's edge network using Workers, KV, D1, and Durable Objects - no servers required.
 
-**Read the full blog post**: [TODO/PLACEHOLDER - Blog post URL]
+**Read the full blog post**: [Serverless Statusphere](https://blog.cloudflare.com/serverless-atproto)
+
+## Deploy it yourself
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Finanna-malick%2Fstatusphere-serverless%2Ftree%2Fmain%2Fworker)
 
 ## Architecture Overview
 
@@ -44,14 +48,9 @@ The application leverages Cloudflare's serverless platform:
 
 - [`firehose_listener/`](firehose_listener/) - External process for real-time Jetstream updates
 
-## Getting Started
-
-[TODO/PLACEHOLDER - Setup instructions will be added]
-
-
 ## Learn More
 
-- **Blog Post**: [TODO/PLACEHOLDER - Blog post URL]
+- **Blog Post**: [Serverless Statusphere](https://blog.cloudflare.com/serverless-atproto)
 - **ATProto Documentation**: [https://atproto.com/docs](https://atproto.com/docs)
 - **Cloudflare Workers**: [https://developers.cloudflare.com/workers/](https://developers.cloudflare.com/workers/)
 - **Bluesky**: [https://bsky.social](https://bsky.social)
